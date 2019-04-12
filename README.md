@@ -8,5 +8,5 @@ This is the code for
 
 In order to run the ISIT 2019 figures:
 1. clone the repository
-2. git checkout 4f85cd5054b5ceb879c19898e359d4f4eabe8311
+2. git checkout isit
 3. python src/main_isit.py
