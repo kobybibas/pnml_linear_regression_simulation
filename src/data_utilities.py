@@ -68,8 +68,8 @@ class DataPolynomial:
             self.y = (self.x + ones)[:, np.newaxis]
             self.y[::2] += 0.1
         else:
-            self.x = np.random.uniform(low=params.interval_min, high=params.interval_min, size=params.num_points)
-            self.x -= self.x.mean()
+            self.x = np.random.uniform(low=params.interval_min, high=params.interval_max, size=params.num_points)
+            # self.x -= self.x.mean()
 
             # y is column vector
             self.y = np.random.uniform(low=-1, high=1, size=params.num_points)[:, np.newaxis]

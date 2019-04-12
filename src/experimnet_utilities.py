@@ -159,7 +159,7 @@ class Experiment:
             self.regret_df[poly_degree][x_test] = regret
         return exp_df
 
-    def execute_x_test(self, data_h, pnml_h, x_test, lamb=1e-6):
+    def execute_x_test(self, data_h, pnml_h, x_test, lamb=1e-4):
         pnml_h.compute_predictor(x_test, self.pnml_params, data_h, lamb)
         return pnml_h.get_predictor(), pnml_h.regret
 
