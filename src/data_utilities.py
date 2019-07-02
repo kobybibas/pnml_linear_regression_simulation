@@ -13,6 +13,9 @@ class DataParameters:
         # Default polynomial degree to fit.
         self.poly_degree = 2
 
+        # Default regularizer term
+        self.lamb = 0.0
+
         # In case of random training points: the interval on which to generate.
         self.is_random = False
         self.interval_min = -1.0
@@ -26,6 +29,7 @@ class DataParameters:
         string = 'DataParameters: \n'
         string += '    num_points: {}\n'.format(self.num_points)
         string += '    poly_degree: {}\n'.format(self.poly_degree)
+        string += '    lamb: {}\n'.format(self.lamb)
         string += '    is_random: {}\n'.format(self.is_random)
         string += '    interval_min: {}\n'.format(self.interval_min)
         string += '    interval_max: {}\n'.format(self.interval_max)

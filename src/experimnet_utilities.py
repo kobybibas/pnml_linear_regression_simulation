@@ -1,17 +1,22 @@
-import pandas as pd
 from tqdm import tqdm
 
 from data_utilities import DataParameters
 from data_utilities import DataPolynomial
 from general_utilies import *
+from pnml_joint_utilities import PnmlJoint
 from pnml_utilities import PNMLParameters
 from pnml_utilities import Pnml
-from pnml_utilities import PnmlNoSigma
 
 
 class ExperimentParameters:
     def __init__(self):
+        self.experiment_name = 'pnml_vanilla'
+
+        self.output_dir_base = '../output/figures'
+
         self.x_test_max = 3.0
+        self.x_test_min = -self.x_test_max
+
         self.dx_test = 0.1
 
         # Polynomial degree to evaluate
@@ -22,19 +27,29 @@ class ExperimentParameters:
 
         # pnml learner type
         self.pnml_type = 'only_theta'
-
-        # Available type of pnml
         self.pnml_possible_types = ['only_theta',  # using variance of the ERM: sigma^2=\sum (y-\hat{y})^2
                                     'joint']  # jointly eval least squares parameters and the variance.
 
+        # The type of variable to iterate on
+        self.exp_type = 'poly'
+        self.exp_possible_types = ['poly',
+                                   'lambda']
+
+        # Avilable exp types
+
     def __str__(self):
         string = 'ExperimentParameters:\n'
+        string += '    output_dir_base: {}\n'.format(self.output_dir_base)
         string += '    x_test_max: {}\n'.format(self.x_test_max)
+        string += '    x_test_max: {}\n'.format(self.x_test_min)
+
         string += '    dx_test: {}\n'.format(self.dx_test)
         string += '    poly_degree_list: {}\n'.format(self.poly_degree_list)
         string += '    lambda_list: {}\n'.format(self.lambda_list)
         string += '    pnml_type: {}\n'.format(self.pnml_type)
         string += '    pnml_possible_types: {}\n'.format(self.pnml_possible_types)
+        string += '    pnml_type: {}\n'.format(self.exp_type)
+        string += '    pnml_possible_types: {}\n'.format(self.exp_possible_types)
         return string
 
 
@@ -49,7 +64,7 @@ class Experiment:
         self.exp_params = exp_params
 
         # Create intervals of test points.
-        self.x_test_array = np.arange(-exp_params.x_test_max,
+        self.x_test_array = np.arange(exp_params.x_test_min,
                                       exp_params.x_test_max,
                                       exp_params.dx_test).round(2)
 
@@ -78,7 +93,7 @@ class Experiment:
         if self.exp_params.pnml_type == 'only_theta':
             pnml_h = Pnml()
         elif self.exp_params.pnml_type == 'joint':
-            pnml_h = PnmlNoSigma()
+            pnml_h = PnmlJoint()
         else:
             ValueError('pnml type doesnt exist')
 
@@ -100,7 +115,7 @@ class Experiment:
         if self.exp_params.pnml_type == 'only_theta':
             pnml_h = Pnml()
         elif self.exp_params.pnml_type == 'joint':
-            pnml_h = PnmlNoSigma()
+            pnml_h = PnmlJoint()
         else:
             ValueError('pnml type doesnt exist')
 
@@ -154,7 +169,7 @@ class Experiment:
 
         # Iterate on test points
         for x_test in tqdm(self.x_test_array):
-            predictor, regret = self.execute_x_test(data_h, pnml_h, x_test)
+            predictor, regret = self.execute_x_test(data_h, pnml_h, x_test, self.data_params.lamb)
             exp_df[x_test] = predictor
             self.regret_df[poly_degree][x_test] = regret
         return exp_df

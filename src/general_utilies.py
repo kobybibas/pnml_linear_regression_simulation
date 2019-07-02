@@ -1,8 +1,6 @@
-import numpy as np
+import os
 
-
-def find_closest_element_in_array(value, array):
-    pass
+import pandas as pd
 
 
 def autoscale_y(ax, margin=0.1):
@@ -31,3 +29,25 @@ def autoscale_y(ax, margin=0.1):
         if new_top > top: top = new_top
 
     ax.set_ylim(bot, top)
+
+
+def exp_df_dict_saver(dictex, output_dir):
+    for key, val in dictex.items():
+        val.to_csv(os.path.join(output_dir, "exp_df_dict_{}.csv".format(str(key))))
+
+    with open(os.path.join(output_dir, "exp_df_dict_keys.txt"), "w") as f:  # saving keys to file
+        f.write(str(list(dictex.keys())))
+
+
+def exp_df_dict_loader(output_dir):
+    """Reading data from keys"""
+    with open(os.path.join(output_dir, "exp_df_dict_keys.txt"), "r") as f:
+        keys = eval(f.read())
+
+    dictex = {}
+    for key in keys:
+        dictex[key] = pd.read_csv(os.path.join(output_dir, "exp_df_dict_{}.csv".format(str(key))),
+                                  index_col=0
+                                  )
+
+    return dictex

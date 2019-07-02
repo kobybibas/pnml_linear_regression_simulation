@@ -1,94 +1,67 @@
+import json
 import os
+import pickle
 
 from data_utilities import DataParameters
 from experimnet_utilities import Experiment, ExperimentParameters
-from plot_utilities import plot_distributions_poly_degree, plot_regret_poly_degree, plot_prediction
+from general_utilies import exp_df_dict_saver
+from logger_utilities import Logger
 from pnml_utilities import PNMLParameters
-from pnml_utilities import twice_universality, get_argmax_prediction, get_mean_prediction
+from pnml_utilities import twice_universality
 
-output_dir = '../output/figures'
-save_prefix = 'vanilla_'
-if not os.path.exists(output_dir):
-    os.makedirs(output_dir)
 
 # Create parameters
-data_params = DataParameters()
-pnml_params = PNMLParameters()
-exp_params = ExperimentParameters()
-exp_params.poly_degree_list = [1, 2]
-pnml_params.y_max = 20000
-pnml_params.y_min = -100
-exp_params.x_test_max = 2.6
-data_params.x_train = [-0.5, 0.2, 0.3]
-data_params.y_train = [0.5, 0.3, 0.55]
-exp_params.pnml_type = 'only_theta'
-print(data_params)
-print(pnml_params)
-print(exp_params)
-save_prefix = 'both' + '_'
+def execute_experiment(params):
+    data_params = DataParameters()
+    pnml_params = PNMLParameters()
+    exp_params = ExperimentParameters()
 
-for pnml_type in ['joint', 'only_theta']:
-    exp_params.pnml_type = pnml_type
+    # Set parameters from dict
+    for key, value in params['exp_params'].items():
+        setattr(exp_params, key, value)
+    for key, value in params['pnml_params'].items():
+        setattr(pnml_params, key, value)
+    for key, value in params['data_params'].items():
+        setattr(data_params, key, value)
+
+    # Create logger and save params to output folder
+    logger = Logger(experiment_type=exp_params.experiment_name, output_root=exp_params.output_dir_base)
+    logger.info('OutputDirectory: %s' % logger.output_folder)
+    with open(os.path.join(logger.output_folder, 'params.json'), 'w', encoding='utf8') as outfile:
+        outfile.write(json.dumps(params, indent=4, sort_keys=True))
+
+    logger.info('%s' % data_params)
+    logger.info('%s' % pnml_params)
+    logger.info('%s' % exp_params)
+
     exp_h = Experiment(exp_params, data_params, pnml_params)
-    exp_h.execute_poly_degree_search()
+    if exp_params.exp_type == 'poly':
+        exp_h.execute_poly_degree_search()
+    elif exp_params.exp_type == 'lambda':
+        exp_h.execute_lambda_search()
     regret_df = exp_h.get_regret_df()
     exp_df_dict = exp_h.get_exp_df_dict()
     x_train, y_train = exp_h.get_train()
 
     # Twice universal
+    logger.info('Execute TU.')
     twice_df = twice_universality(exp_df_dict)
     exp_df_dict['Twice'] = twice_df
 
-    # Get argmax predictor
-    print('argmax predictor')
-    argmax_prediction_dict = get_argmax_prediction(exp_df_dict)
-    for key in argmax_prediction_dict:
-        argmax_prediction_dict[pnml_type + '_' + key] = argmax_prediction_dict.pop(key)
+    # Save results
+    logger.info('Save results.')
+    regret_df.to_pickle(os.path.join(logger.output_folder, 'regret_df.pkl'))
+    exp_df_dict_saver(exp_df_dict, logger.output_folder)
 
-    # Get mean predictor
-    print('mean predictor')
-    mean_prediction_dict = get_mean_prediction(exp_df_dict)
-    for key in mean_prediction_dict:
-        mean_prediction_dict[pnml_type + '_' + key] = mean_prediction_dict.pop(key)
+    trainset_dict = {'x_train': x_train, 'y_train': y_train}
+    with open(os.path.join(logger.output_folder, 'trainset_dict.pkl'), "wb") as f:
+        pickle.dump(trainset_dict, f)
+        f.close()
+    logger.info('Finished. Save to: %s' % logger.output_folder)
 
-    #################
-    # Plots
 
-    # Plot argmax prediction
-    if 'fig_argmax_pred' not in locals() or 'axs_argmax_pred' not in locals():
-        fig_argmax_pred, axs_argmax_pred = None, None
-    fig_argmax_pred, axs_argmax_pred = plot_prediction(argmax_prediction_dict, x_train, y_train, exp_h.x_test_array,
-                                                       fig_argmax_pred, axs_argmax_pred)
-    fig_argmax_pred.savefig(os.path.join(output_dir, save_prefix + 'pnml_argmax_prediction.jpg'),
-                            dpi=200, bbox_inches='tight')
-    # plt.show()
+if __name__ == "__main__":
+    with open("params.json") as file:
+        params_from_file = json.load(file)
 
-    # Plot mean prediction
-    if 'fig_mean_pred' not in locals() or 'axs_mean_pred' not in locals():
-        fig_mean_pred, axs_mean_pred = None, None
-    fig_mean_pred, axs_mean_pred = plot_prediction(mean_prediction_dict, x_train, y_train, exp_h.x_test_array,
-                                                   fig_mean_pred, axs_mean_pred)
-    axs_mean_pred[0].set_title(r"mean$_{y_N}$ $Q(y_N|z^N,x_N)$", fontsize=16)
-    fig_mean_pred.savefig(os.path.join(output_dir, save_prefix + 'pnml_mean_prediction.jpg'), dpi=200,
-                          bbox_inches='tight')
-    # plt.show()
-
-    # Plot regret
-    if 'fig_regret' not in locals() or 'axs_regret' not in locals():
-        fig_regret, axs_regret = None, None
-    fig_regret, axs_regret = plot_regret_poly_degree(regret_df, x_train,
-                                                     fig_regret, axs_regret)
-    fig_regret.savefig(os.path.join(output_dir, save_prefix + 'pnml_regret.jpg'), dpi=200, bbox_inches='tight')
-    # plt.show()
-
-    # Plot Distributions
-    if 'fig_dist' not in locals() or 'axs_dist' not in locals():
-        fig_dist, axs_dist = None, None
-    x_val_to_plot_list = [-1.20, 0.20, exp_h.x_test_array[-1]]
-    x_lim_diff_list = [15, 7.5, pnml_params.y_max]
-    fig_dist, axs_dist = plot_distributions_poly_degree(exp_df_dict, x_val_to_plot_list, x_lim_diff_list,
-                                                        fig_dist, axs_dist)
-    fig_dist.savefig(os.path.join(output_dir, save_prefix + 'pnml_distribution.jpg'), dpi=200, bbox_inches='tight')
-    # plt.show()
-
-pass
+    execute_experiment(params_from_file)

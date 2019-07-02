@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
-from scipy.integrate import quad
 from scipy.stats import norm
+from tqdm import tqdm
 
 from data_utilities import DataPolynomial
 
@@ -111,8 +111,8 @@ class Pnml:
                                                             lamb)
 
         self.phi_train = data_h.phi_train
-        self.y_train = data_h.x
-        self.x_train = data_h.y
+        self.y_train = data_h.y
+        self.x_train = data_h.x
 
         self.pnml_params = pnml_params
         self.phi_test = data_h.convert_point_to_features(x_test, data_h.poly_degree)
@@ -164,69 +164,6 @@ class Pnml:
         return p_y
 
 
-class PnmlNoSigma(Pnml):
-    def __init__(self):
-        super().__init__()
-        self.k_0 = None
-
-    @staticmethod
-    def calc_sigma_2(x_test: np.ndarray, y_test, x_train: np.ndarray, y_train: np.ndarray, P_N: np.ndarray,
-                     theta: np.ndarray, c_0):
-        summation = 0
-        N = np.max(y_train.shape)
-        y_hat_test = x_test.T.dot(theta)
-
-        temp = P_N.dot(x_test).dot(y_test - y_hat_test)
-        for i in range(N):
-            x_i = x_train[:, i]
-            y_i = y_train[i]
-            y_hat_train = x_i.T.dot(theta)
-            summation += np.power(y_i - y_hat_train - x_i.T.dot(temp), 2)
-
-        return 1 / (N + 1) * (summation + np.power(y_test - y_hat_test, 2) / np.power(c_0, 2))
-
-    @staticmethod
-    def argmax_q_y(y_test, x_test, x_train, y_train, P_N, theta, c_0):
-        sigma_2 = PnmlNoSigma.calc_sigma_2(x_test, y_test, x_train, y_train, P_N, theta, c_0)
-        exponent = np.exp(-np.power(y_test - x_test.T.dot(theta), 2) / (2 * sigma_2 * np.power(c_0, 2)))
-        mul1 = 1 / np.sqrt(2 * np.pi * sigma_2)
-
-        return mul1 * exponent
-
-    def calculate_norm_factor(self, phi: np.ndarray, lamb: float = 0.0):
-        """
-        Calculate the normalization factor of the pnml learner.
-        :param phi: the feature matrix (train+test).
-        :param lamb: regularization term value.
-        :return: normalization factor.
-        """
-
-        # Calculate the original pNML normalization factor
-        self.k_0 = super().calculate_norm_factor(phi, lamb)
-
-        # Calculate normalization factor using numerical integration
-        k, _ = quad(self.argmax_q_y,
-                    self.y_to_eval[0],
-                    self.y_to_eval[-1],
-                    args=(self.phi_test, self.phi_train, self.y_train,
-                          self.phi_phi_t_inv, self.theta_erm, self.k_0))
-        return k
-
-    def create_pnml_pdf(self, y_to_eval):
-        """
-        Create Probability density function of phi_test
-        :param y_to_eval: the labels on which the probability will be calculated.
-        :return: probability list. p_y.sum() should be 1.0
-        """
-        p_y = []
-        for y_single in y_to_eval:
-            p_y.append(self.argmax_q_y(y_single, self.phi_test, self.phi_train, self.y_train,
-                                       self.phi_phi_t_inv, self.theta_erm, self.k_0))
-        p_y = np.array(p_y) / self.k
-        # print('p_y sum = ', p_y.sum() * self.pnml_params.dy)
-        return p_y.squeeze()
-
-
 def get_argmax_prediction(exp_df_dict: dict) -> dict:
     """
     Get the argument of the maximum probability
@@ -237,9 +174,27 @@ def get_argmax_prediction(exp_df_dict: dict) -> dict:
 
     argmax_prediction_dict = {}
     for key, exp_df in exp_df_dict.items():
-        argmax_prediction_dict[key] = exp_df.idxmax(axis=0).tolist()
+        argmax_prediction_dict[key] = exp_df.idxmax(axis=0)
     return argmax_prediction_dict
 
+
+#
+# def get_mean_prediction(exp_df_dict):
+#     """
+#     Get the argument of the mean probability
+#     :param exp_df_dict: {key:  columns: x test. iloc: pdf on y}
+#     :return: the prediction at test point
+#     """
+#     # exp_df: columns: x test. iloc: pdf on y
+#
+#     mean_prediction_dict = {}
+#     for key, exp_df in exp_df_dict.items():
+#         y_values = exp_df.index.values
+#         dy = abs((y_values[:-1] - y_values[1:]).mean())
+#         mean_prediction_dict[key] = []
+#         for x_point, prob in exp_df.iteritems():
+#             mean_prediction_dict[key].append((y_values * prob * dy).sum())
+#     return mean_prediction_dict
 
 def get_mean_prediction(exp_df_dict):
     """
@@ -248,14 +203,12 @@ def get_mean_prediction(exp_df_dict):
     :return: the prediction at test point
     """
     # exp_df: columns: x test. iloc: pdf on y
-
     mean_prediction_dict = {}
     for key, exp_df in exp_df_dict.items():
         y_values = exp_df.index.values
         dy = abs((y_values[:-1] - y_values[1:]).mean())
-        mean_prediction_dict[key] = []
-        for x_point, prob in exp_df.iteritems():
-            mean_prediction_dict[key].append((y_values * prob * dy).sum())
+        mean_series = (dy * exp_df.cumsum() - 0.5).abs().idxmin()
+        mean_prediction_dict[key] = mean_series
     return mean_prediction_dict
 
 
@@ -274,9 +227,74 @@ def twice_universality(twice_universal_dict: dict):
 
     # Initialize output data frame
     twice_df = pd.DataFrame(columns=x_test, index=y_values)
-    for x in x_test:
+    for x in tqdm(x_test):
         for key in model_families:
             twice_df_single[key] = twice_universal_dict[key][x]
         max_prob = twice_df_single.max(axis=1)
         twice_df[x] = max_prob / (dy * max_prob).sum()
     return twice_df
+
+
+def predictor_using_mdl(exp_df_dict: dict, regret_df: pd.DataFrame, prediction_dict: dict):
+    """
+
+    :param exp_df_dict: {key:  columns: x test. iloc: pdf on y}
+    :param regret_df: regrets of the experiments. {col: exp param, row: x test}
+    :param prediction_dict: the argmax of the probability for x test. exp params: {index: x test, data: y_hat}
+    :return: min_mdl_prediction{x test, y_hat}, regret_mdl:{x_test, regret}
+    """
+
+    loss_df = pd.DataFrame(columns=regret_df.columns, index=regret_df.index)
+    for model_deg in regret_df.columns:
+        exp_df = exp_df_dict[str(model_deg)]
+        regret = regret_df[model_deg].astype(np.float32)
+
+        y_values = exp_df.index.values
+        dy = abs((y_values[:-1] - y_values[1:]).mean())
+
+        jinni_loss = -np.log((dy * exp_df * np.exp(regret)).max())
+        loss_df[model_deg] = jinni_loss + regret
+
+    # Assign prediction of the lowest mdl
+    min_model_mdl = loss_df.idxmin(axis=1)
+    min_mdl_prediction = pd.Series(index=regret_df.index)
+    for x, min_idx in min_model_mdl.iteritems():
+        min_mdl_prediction[x] = prediction_dict[str(min_idx)][str(x)]
+
+    # Regret
+    regret_value = regret_df.lookup(min_model_mdl.index, min_model_mdl.values)
+    regret_mdl = pd.Series(data=regret_value, index=regret_df.index)
+    return min_mdl_prediction, regret_mdl
+
+
+def predictor_using_taylor(exp_df_dict: dict, regret_df: pd.DataFrame, prediction_dict: dict):
+    """
+
+    :param exp_df_dict: {key:  columns: x test. iloc: pdf on y}
+    :param regret_df: regrets of the experiments. {col: exp param, row: x test}
+    :param prediction_dict: the argmax of the probability for x test. exp params: {index: x test, data: y_hat}
+    :return: min_mdl_taylor{x test, y_hat}, regret_mdl:{x_test, regret}
+    """
+
+    loss_df = pd.DataFrame(columns=regret_df.columns, index=regret_df.index)
+    for model_deg in regret_df.columns:
+        exp_df = exp_df_dict[str(model_deg)]
+        regret = regret_df[model_deg].astype(np.float32)
+
+        y_values = exp_df.index.values
+        dy = abs((y_values[:-1] - y_values[1:]).mean())
+
+        norm_factor = np.exp(regret)
+        loss = -np.log((dy * exp_df).max())
+        loss_df[model_deg] = loss - 1 / (norm_factor ** 2)
+
+    # Assign prediction of the lowest mdl
+    min_model_taylor = loss_df.idxmin(axis=1)
+    min_mdl_taylor = pd.Series(index=regret_df.index)
+    for x, min_idx in min_model_taylor.iteritems():
+        min_mdl_taylor[x] = prediction_dict[str(min_idx)][str(x)]
+
+    # Regret
+    regret_value = regret_df.lookup(min_model_taylor.index, min_model_taylor.values)
+    regret_mdl = pd.Series(data=regret_value, index=regret_df.index)
+    return min_mdl_taylor, regret_mdl
