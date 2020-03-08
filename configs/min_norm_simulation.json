@@ -1,0 +1,17 @@
+{
+    "poly_degree_list": [8, 15, 50],
+    "lambda_list": 0,
+    "x_test_max": 1.0,
+    "x_test_min": -1.0,
+    "dx_test": 0.01,
+    "exp_type": "poly",
+    "output_dir_base": "../output/",
+    "multi_process": true,
+    "y_max": 100,
+    "y_min": -100,
+    "dy": 0.0025,
+    "min_sigma_square": 1e-3,
+    "x_train": [-0.75, -0.65, 0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 1.0],
+    "y_train": [-0.1, -0.2, -2.0, -1.0, -0.5, -0.3, 0.1, 0.5, 0.2, 0.1],
+    "data_type": "poly"
+}
