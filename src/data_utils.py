@@ -1,18 +1,18 @@
+import logging
+from abc import abstractmethod
+
 import numpy as np
 
-from loguru import logger
+logger = logging.getLogger(__name__)
 
 
-class DataPolynomial:
-
-    def __init__(self, x_train, y_train):
-        """
-        Create the training data.
-        :param params: parameters for creating the training data.
-        """
-
+class DataBase:
+    def __init__(self, x_train: list, y_train: list, model_degree: int):
         # Matrix of training feature [phi0;phi1;phi2...]. phi is the features phi(x)
         self.phi_train = None
+
+        # Model degree, proportional to the learnable parameters
+        self.model_degree = model_degree
 
         # The least squares empirical risk minimization solution
         self.theta_erm = None
@@ -21,17 +21,46 @@ class DataPolynomial:
         self.x = np.array(x_train)
         self.y = np.array(y_train)
 
-    def create_train(self, poly_degree: int):
+    def create_train_features(self):
         """
         Convert data points to feature matrix: phi=[x0^0,x0^1,x0^2...;x1^0,x1^1,x1^2...;x2^0,x2^1,x2^2...]
-        :param poly_degree: the assumed polynomial degree of the training set.
         :return: phi: training set feature matrix.
         """
 
         # Create Feature matrix
-        logger.info('Create train: num of features {}'.format(poly_degree))
-        self.phi_train = self.convert_to_features(poly_degree)
+        logger.info('Create train: num of features {}'.format(self.model_degree))
+        self.phi_train = self.convert_to_features()
+        logger.info('self.phi_train.shape: {}'.format(self.phi_train.shape))
         return self.phi_train
+
+    def get_data_points_as_list(self):
+        """
+        :return: list of training set data. list of training set labels.
+        """
+        return self.x.tolist(), self.y.tolist()
+
+    def get_labels_array(self) -> np.ndarray:
+        """
+        :return: the labels of the training set.
+        """
+        return self.y
+
+    @abstractmethod
+    def convert_to_features(self, model_degree: int) -> np.ndarray:
+        """ To override
+        convert self.x to features
+        phi = self.x
+        """
+        pass
+
+    @staticmethod
+    @abstractmethod
+    def convert_point_to_features(x: float, model_degree: int) -> np.ndarray:
+        """ To override """
+        pass
+
+
+class DataPolynomial(DataBase):
 
     def convert_to_features(self, pol_degree: int) -> np.ndarray:
         """
@@ -63,70 +92,56 @@ class DataPolynomial:
 
         return phi
 
-    def get_data_points_as_list(self):
-        """
-        :return: list of training set data. list of training set labels.
-        """
-        return self.x.tolist(), self.y.tolist()
 
-    def get_labels_array(self) -> np.ndarray:
-        """
-        :return: the labels of the training set.
-        """
-        return self.y
+class DataFourier(DataBase):
 
-    @staticmethod
-    def fit_least_squares_estimator(phi: np.ndarray, y: np.ndarray, lamb: float = 0.0) -> np.ndarray:
-        """
-        Fit ERM least squares estimator
-        :param phi: the training set features matrix.
-        :param y: the labels vector.
-        :param lamb: regularization term.
-        :return: the fitted parameters.
-        """
-        phi_phi_t = phi.dot(phi.T)
-        phi_phi_t_inv = np.linalg.pinv(phi_phi_t + lamb * np.eye(phi_phi_t.shape[0], phi_phi_t.shape[1]))
-        theta = phi_phi_t_inv.dot(phi).dot(y)
-        return theta
-
-
-class DataCosine(DataPolynomial):
-
-    def convert_to_features(self, max_freq: int) -> np.ndarray:
+    def convert_to_features(self) -> np.ndarray:
         """
         Convert the training point to feature matrix.
-        :param pol_degree: the assumed polynomial degree of the data.
+        :param model_degree: the assumed polynomial degree of the data.
         :return: phy = [x0^0 , x0^1, ... , x0^pol_degree; x1^0 , x1^1, ... , x1^pol_degree].T
         """
         phi = []
-        for n in range(max_freq + 1):
-            if n == 0:
+        n = 1
+
+        for i in range(self.model_degree + 1):
+            if i == 0:
                 phi.append(np.array([1] * len(self.x)))
-            elif n % 2 == 0:  # Even
-                phi.append(np.cos(2 * np.pi * self.x / n))
-            else:  # Odd
-                phi.append(np.sin(2 * np.pi * self.x / n))
+            elif i % 2 != 0:
+                phi.append(np.sqrt(2) * np.cos(np.pi * n * self.x))
+            else:
+                phi.append(np.sqrt(2) * np.sin(np.pi * n * self.x))
+                n += 1
         phi = np.asarray(phi)
         return phi
 
     @staticmethod
-    def convert_point_to_features(x: np.ndarray, max_freq: int) -> np.ndarray:
+    def convert_point_to_features(x: np.ndarray, model_degree: int) -> np.ndarray:
         """
         Given a training point, convert it to features
         :param x: training point.
-        :param max_freq: proportional to the maximum frequency.
+        :param model_degree: number of learnable parameters.
         :return: phi = [x^0,x^1,x^2,...].T
         """
         phi = []
-        for n in range(max_freq + 1):
-            if n == 0:
+        n = 1
+        for i in range(model_degree + 1):
+            if i == 0:
                 phi.append(1)
-            elif n % 2 == 0:  # Even
-                phi.append(np.cos(2 * np.pi * x / n))
-            else:  # Odd
-                phi.append(np.sin(2 * np.pi * x / n))
+            elif i % 2 != 0:
+                phi.append(np.sqrt(2) * np.cos(np.pi * n * x))
+            else:
+                phi.append(np.sqrt(2) * np.sin(np.pi * n * x))
+                n += 1
+
         phi = np.asarray(phi)
         if len(phi.shape) == 1:
             phi = phi[:, np.newaxis]
 
         return phi
+
+
+data_type_dict = {
+    'polynomial': DataPolynomial,
+    'fourier': DataFourier
+}

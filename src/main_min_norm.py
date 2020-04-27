@@ -1,36 +1,35 @@
-import argparse
-import json
-import os.path as osp
+import logging
+import os
 
+import hydra
+import numpy as np
+
+from data_utils import data_type_dict
 from experimnet_utils import execute_x_vec
-from logger_utils import Logger
 from pnml_min_norm_utils import PnmlMinNorm
 
+logger = logging.getLogger(__name__)
 
-def execute_experiment(params):
-    # Create logger and save params to output folder
-    logger = Logger(experiment_type='pnml_min_norm', output_root=params['output_dir_base'])
-    logger.info('OutputDirectory: %s' % logger.output_folder)
-    with open(osp.join(logger.output_folder, 'params.json'), 'w', encoding='utf8') as outfile:
-        outfile.write(json.dumps(params, indent=4, sort_keys=True))
-    logger.info(json.dumps(params, indent=4, sort_keys=True))
+
+@hydra.main(config_path='../configs/min_norm_fourier.yaml')
+def execute_experiment(cfg):
+    logger.info(f"Run config:\n{cfg.pretty()}")
+
+    # Create trainset
+    DataC = data_type_dict[cfg.data_type]
+    data_h = DataC(cfg.x_train, cfg.y_train, cfg.model_degree)
+    phi_train, y_train = data_h.create_train_features(), data_h.y
 
     # Build pNML
-    pnml_h = PnmlMinNorm()
+    pnml_h = PnmlMinNorm(cfg.constrain_factor, phi_train, y_train, lamb=0.0, min_sigma_square=cfg.min_sigma_square)
+    pnml_h.set_y_interval(cfg.y_min, cfg.y_max, cfg.dy, is_adaptive=cfg.is_adaptive)
 
-    # Iterate on poly degree
-    for poly_degree in params['poly_degree_list']:
-        execute_x_vec(pnml_h, poly_degree, lamb=0.0, params=params, out_dir=logger.output_folder)
-    logger.info('Finished. Save to: %s' % logger.output_folder)
+    # Execute x_test
+    x_test_array = np.arange(cfg['x_test_min'], cfg['x_test_max'], cfg['dx_test']).round(2)
+    execute_x_vec(x_test_array, data_h, pnml_h, is_mp=cfg.is_multi_process, out_dir=os.getcwd())
+    logger.info('Finished. Save to: {}'.format(os.getcwd()))
+    logger.info('rsync -chavzP --stats aws_cpu:{} .'.format(os.getcwd()))
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-config',
-                        default=osp.join('..', 'configs', 'min_norm_simulation.json'),
-                        help='path to configuration file')
-    args = parser.parse_args()
-
-    with open(args.config) as file:
-        params_user = json.load(file)
-    execute_experiment(params_user)
+    execute_experiment()
