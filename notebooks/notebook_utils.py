@@ -26,17 +26,17 @@ def medfilt(x, k):
 
 
 def calc_nf_from_simulation(
-        genie_file: str, sigma_sqaure: float = 1e-3
+        genie_file: str, sigma_square: float = 1e-3
 ) -> (float, np.ndarray):
     loaded_dict = np.load(genie_file).item()
     epsilons = loaded_dict["epsilons"]
     y_vec = loaded_dict["y_vec"]
-    genies_probs = ((2 * np.pi * sigma_sqaure) ** (-1 / 2)) * np.exp(
-        -(epsilons ** 2) / (2 * sigma_sqaure)
-    )
+    genies_probs = ((2 * np.pi * sigma_square) ** (-1 / 2)) * np.exp(
+        -(epsilons ** 2) / (2 * sigma_square)
+    ).squeeze()
 
-    genies_probs = medfilt(genies_probs.squeeze(), k=3)
-    nf_simulation = np.trapz(np.array(genies_probs).squeeze(), x=y_vec)
+    # genies_probs = medfilt(genies_probs.squeeze(), k=3)
+    nf_simulation = np.trapz(genies_probs, x=y_vec)
     loaded_dict["genies_probs_list"] = genies_probs.squeeze()
     return nf_simulation, genies_probs, y_vec
 
@@ -56,6 +56,8 @@ def execute_x_test_regret(
     h_square = constant_dict["h_square"]
     theta_mn = constant_dict["theta_mn"]
     data_h = constant_dict["data_h"]
+    phi_train = constant_dict["phi_train"]
+    M, N = phi_train.shape
 
     # Convert to features
     phi_test = data_h.convert_point_to_features(x_test, model_degree)

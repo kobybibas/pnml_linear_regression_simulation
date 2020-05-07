@@ -1,18 +1,18 @@
 model_degree: 3
 lambda: 0
 x_test_max: 1.0
-x_test_min: -1.0
+x_test_min: 0
 dx_test: 0.01
 is_multi_process: true
-y_max: 150.0
-y_min: -150.0
-dy: 0.005
+y_max: 100
+y_min: 1e-20 # Constructing the interval such that: [-y_max:y_min]+[0]+[y_min:y_max]
+y_num: 50000
 min_sigma_square: 1e-3
-x_train: [-0.955, -0.555, 0.055, 0.255, 0.455, 0.655, 0.855, 0.995]
-y_train: [-0.1, -0.2, -0.8, -0.5, 0.1, 0.5, 0.2, 0.1]
+x_train: [0.055, 0.655, 0.855, 0.995]
+y_train: [-0.1, 0.5, 0.2, 0.1]
 data_type: fourier # polynomial
 constrain_factor: 1.0
-is_adaptive: true
+is_adaptive: false
 
 hydra:
   run:

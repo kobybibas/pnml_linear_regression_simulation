@@ -33,17 +33,23 @@ class Pnml:
         # Fitted least squares parameters
         self.theta_erm = self.fit_least_squares_estimator(phi_train, self.y_train, self.lamb)
 
-    def set_y_interval(self, y_min: float, y_max: float, dy: float, is_adaptive: bool = False):
+    def set_y_interval(self, dy_min: float, y_max: float, y_num: int, is_adaptive: bool = False):
         """
         Build list on which the probability will be evaluated.
-        :param y_min: the lower bound of the interval.
+        :param dy_min: first evaluation point after 0.
         :param y_max: the higher bound of the interval.
-        :param dy: the difference between y ticks.
+        :param y_num: number of points to evaluate
         :param is_adaptive: gives more dy around zero.
         :return: y list on which to eval the probability.
         """
         # Initialize evaluation interval
-        y_to_eval = np.arange(y_min, y_max, dy)
+        if dy_min == 0:
+            logger.info('Warning: dy_min is zeros, setting to {}'.format(np.finfo(float).eps))
+            dy_min = np.finfo(float).eps
+
+        y_to_eval = np.append([0], np.logspace(np.log10(dy_min), np.log10(y_max), int(y_num / 2)))
+        y_to_eval = np.unique(np.concatenate((-y_to_eval, y_to_eval)))
+
         if is_adaptive is True:
             y_to_eval = np.concatenate((np.arange(0, 0.001, 1e-7),
                                         np.arange(0.001, 1, 1e-3),
@@ -51,6 +57,7 @@ class Pnml:
                                         np.arange(10, 100, 1.0),
                                         np.arange(100, 1000, 10.0)))
             y_to_eval = np.unique(np.concatenate((-y_to_eval, y_to_eval)))
+
         logger.info('y_to_eval.shape: {}'.format(y_to_eval.shape))
         self.y_to_eval = y_to_eval
 
