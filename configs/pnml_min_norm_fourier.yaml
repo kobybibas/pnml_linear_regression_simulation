@@ -1,5 +1,5 @@
-model_degree: 3
-lambda: 0
+pnml_type: pnml_min_norm
+model_degree: 10
 x_test_max: 1.0
 x_test_min: 0
 dx_test: 0.01
@@ -17,4 +17,7 @@ is_adaptive: false
 hydra:
   run:
     # Output directory
-    dir: ../output/${now:%Y%m%d_%H%M%S}
+    dir: ../output/pnml_min_norm_fourier_${now:%Y%m%d_%H%M%S}
+  sweep:
+    dir: ../output/
+    subdir: pnml_fourier_${now:%Y%m%d_%H%M%S}_${hydra.job.num}

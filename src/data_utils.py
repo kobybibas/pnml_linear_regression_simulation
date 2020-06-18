@@ -8,10 +8,7 @@ logger = logging.getLogger(__name__)
 
 class DataBase:
     def __init__(self, x_train: list, y_train: list, model_degree: int):
-        # Matrix of training feature [phi0;phi1;phi2...]. phi is the features phi(x)
-        self.phi_train = None
-
-        # Model degree, proportional to the learnable parameters
+        # Model degree, proportional to the learn-able parameters
         self.model_degree = model_degree
 
         # The least squares empirical risk minimization solution
@@ -21,6 +18,9 @@ class DataBase:
         self.x = np.array(x_train)
         self.y = np.array(y_train)
 
+        # Matrix of training feature [phi0;phi1;phi2...]. phi is the features phi(x)
+        self.phi_train = self.create_train_features()
+
     def create_train_features(self):
         """
         Convert data points to feature matrix: phi=[x0^0,x0^1,x0^2...;x1^0,x1^1,x1^2...;x2^0,x2^1,x2^2...]
@@ -29,9 +29,9 @@ class DataBase:
 
         # Create Feature matrix
         logger.info('Create train: num of features {}'.format(self.model_degree))
-        self.phi_train = self.convert_to_features()
-        logger.info('self.phi_train.shape: {}'.format(self.phi_train.shape))
-        return self.phi_train
+        phi_train = self.convert_to_features()
+        logger.info('self.phi_train.shape: {}'.format(phi_train.shape))
+        return phi_train
 
     def get_data_points_as_list(self):
         """
@@ -46,12 +46,12 @@ class DataBase:
         return self.y
 
     @abstractmethod
-    def convert_to_features(self, model_degree: int) -> np.ndarray:
+    def convert_to_features(self) -> np.ndarray:
         """ To override
         convert self.x to features
         phi = self.x
         """
-        pass
+        return self.x
 
     @staticmethod
     @abstractmethod
@@ -62,14 +62,13 @@ class DataBase:
 
 class DataPolynomial(DataBase):
 
-    def convert_to_features(self, pol_degree: int) -> np.ndarray:
+    def convert_to_features(self) -> np.ndarray:
         """
         Convert the training point to feature matrix.
-        :param pol_degree: the assumed polynomial degree of the data.
         :return: phy = [x0^0 , x0^1, ... , x0^pol_degree; x1^0 , x1^1, ... , x1^pol_degree].T
         """
         phi = []
-        for n in range(pol_degree + 1):
+        for n in range(self.model_degree + 1):
             phi.append(np.power(self.x, n))
         phi = np.asarray(phi)
         return phi
@@ -98,7 +97,6 @@ class DataFourier(DataBase):
     def convert_to_features(self) -> np.ndarray:
         """
         Convert the training point to feature matrix.
-        :param model_degree: the assumed polynomial degree of the data.
         :return: phy = [x0^0 , x0^1, ... , x0^pol_degree; x1^0 , x1^1, ... , x1^pol_degree].T
         """
         phi = []

@@ -13,7 +13,17 @@ from pnml_utils import Pnml
 logger = logging.getLogger(__name__)
 
 
-def execute_x_vec(x_test_array, data_h: DataBase, pnml_h, is_mp: bool, out_dir: str) -> list:
+def execute_x_vec(x_test_array: np.ndarray, data_h: DataBase, pnml_h: Pnml, out_dir: str, is_mp: bool = False) -> list:
+    """
+    For each x point, calculate its regret.
+    :param x_test_array: x array that contains the x points that will be calculated
+    :param data_h: data handler class, used for training set.
+    :param pnml_h: The learner class handler.
+    :param out_dir: the output directory
+    :param is_mp: if calculate using multiprocess.
+    :return: list of the calculated regret.
+    """
+
     # Initialize output
     save_dir_genies_outputs = osp.join(out_dir, 'genies_output')
     save_file_name = osp.join(out_dir, 'res_model_degree_{}_lamb_{}.npy'.format(data_h.model_degree, pnml_h.lamb))
@@ -23,7 +33,7 @@ def execute_x_vec(x_test_array, data_h: DataBase, pnml_h, is_mp: bool, out_dir: 
     np.save(save_theta_erm_file_name, pnml_h.theta_erm)
     os.makedirs(save_dir_genies_outputs, exist_ok=True)
 
-    # iterate on test samples
+    # Iterate on test samples
     if is_mp is False:
         res_list = execute_x_test_array(x_test_array, data_h, pnml_h, save_file_name, save_dir_genies_outputs)
     else:

@@ -1,67 +1,43 @@
-import json
+import logging
 import os
-import pickle
 
-from data_utilities import DataParameters
-from experimnet_utilities import Experiment, ExperimentParameters
-from general_utilies import exp_df_dict_saver
-from logger_utilities import Logger
-from pnml_utilities import PNMLParameters
-from pnml_utilities import twice_universality
+import hydra
+import numpy as np
+
+from data_utils import data_type_dict
+from experimnet_utils import execute_x_vec
+from pnml_min_norm_utils import PnmlMinNorm
+from pnml_utils import Pnml
+
+logger = logging.getLogger(__name__)
 
 
-# Create parameters
-def execute_experiment(params):
-    data_params = DataParameters()
-    pnml_params = PNMLParameters()
-    exp_params = ExperimentParameters()
+@hydra.main(config_path='../configs/pnml_min_norm_fourier.yaml') # for pnml_min_norm
+# @hydra.main(config_path='../configs/pnml_fourier.yaml')  # for vanilla pnml
+def execute_experiment(cfg):
+    logger.info(f"Run config:\n{cfg.pretty()}")
+    logger.info(os.getcwd())
 
-    # Set parameters from dict
-    for key, value in params['exp_params'].items():
-        setattr(exp_params, key, value)
-    for key, value in params['pnml_params'].items():
-        setattr(pnml_params, key, value)
-    for key, value in params['data_params'].items():
-        setattr(data_params, key, value)
+    # Create trainset
+    data_class = data_type_dict[cfg.data_type]
+    data_h = data_class(cfg.x_train, cfg.y_train, cfg.model_degree)
+    phi_train, y_train = data_h.create_train_features(), data_h.y
 
-    # Create logger and save params to output folder
-    logger = Logger(experiment_type=exp_params.experiment_name, output_root=exp_params.output_dir_base)
-    logger.info('OutputDirectory: %s' % logger.output_folder)
-    with open(os.path.join(logger.output_folder, 'params.json'), 'w', encoding='utf8') as outfile:
-        outfile.write(json.dumps(params, indent=4, sort_keys=True))
+    # Build pNML
+    if cfg.pnml_type == 'pnml':
+        pnml_h = Pnml(phi_train, y_train, lamb=cfg.lamb, min_sigma_square=cfg.min_sigma_square)
+    elif cfg.pnml_type == 'pnml_min_norm':
+        pnml_h = PnmlMinNorm(cfg.constrain_factor, phi_train, y_train, lamb=0.0, min_sigma_square=cfg.min_sigma_square)
+    else:
+        raise ValueError(f'pnml_type not supported {cfg.pnml_type}')
+    pnml_h.set_y_interval(cfg.y_min, cfg.y_max, cfg.y_num, is_adaptive=cfg.is_adaptive)
 
-    logger.info('%s' % data_params)
-    logger.info('%s' % pnml_params)
-    logger.info('%s' % exp_params)
-
-    exp_h = Experiment(exp_params, data_params, pnml_params)
-    if exp_params.exp_type == 'poly':
-        exp_h.execute_poly_degree_search()
-    elif exp_params.exp_type == 'lambda':
-        exp_h.execute_lambda_search()
-    regret_df = exp_h.get_regret_df()
-    exp_df_dict = exp_h.get_exp_df_dict()
-    x_train, y_train = exp_h.get_train()
-
-    # Twice universal
-    logger.info('Execute TU.')
-    twice_df = twice_universality(exp_df_dict)
-    exp_df_dict['Twice'] = twice_df
-
-    # Save results
-    logger.info('Save results.')
-    regret_df.to_pickle(os.path.join(logger.output_folder, 'regret_df.pkl'))
-    exp_df_dict_saver(exp_df_dict, logger.output_folder)
-
-    trainset_dict = {'x_train': x_train, 'y_train': y_train}
-    with open(os.path.join(logger.output_folder, 'trainset_dict.pkl'), "wb") as f:
-        pickle.dump(trainset_dict, f)
-        f.close()
-    logger.info('Finished. Save to: %s' % logger.output_folder)
+    # Execute x_test
+    x_test_array = np.arange(cfg['x_test_min'], cfg['x_test_max'], cfg['dx_test']).round(2)
+    execute_x_vec(x_test_array, data_h, pnml_h, out_dir=os.getcwd(), is_mp=cfg.is_multi_process)
+    logger.info('Finished. Save to: {}'.format(os.getcwd()))
+    logger.info('rsync -chavzP --stats aws_cpu:{} .'.format(os.getcwd()))
 
 
 if __name__ == "__main__":
-    with open("params.json") as file:
-        params_from_file = json.load(file)
-
-    execute_experiment(params_from_file)
+    execute_experiment()

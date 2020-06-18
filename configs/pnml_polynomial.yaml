@@ -1,0 +1,23 @@
+pnml_type: pnml
+model_degree: 3
+lamb: 0
+x_test_max: 1.0
+x_test_min: -1.0
+dx_test: 0.01
+is_multi_process: true
+y_max: 100
+y_min: 1e-20 # Constructing the interval such that: [-y_max:y_min]+[0]+[y_min:y_max]
+y_num: 50000
+min_sigma_square: 1e-3
+x_train: [-0.7, -0.6, 0.05, 0.1, 0.25, 0.3, 0.35, 0.5, 0.55, 0.6]
+y_train: [-0.1, -0.2, -2.0, -1.0, -0.5, -0.3, 0.1, 0.5, 0.2, 0.1]
+data_type: polynomial # fourier
+is_adaptive: false
+
+hydra:
+  run:
+    # Output directory
+    dir: ../output/pnml_polynomial_${now:%Y%m%d_%H%M%S}
+  sweep:
+    dir: ../output/
+    subdir: pnml_polynomial_${now:%Y%m%d_%H%M%S}_${hydra.job.num}
