@@ -12,7 +12,7 @@ from pnml_utils import Pnml
 logger = logging.getLogger(__name__)
 
 
-@hydra.main(config_path='../configs/pnml_min_norm_fourier.yaml') # for pnml_min_norm
+@hydra.main(config_name='../configs/pnml_min_norm_fourier.yaml') # for pnml_min_norm
 # @hydra.main(config_path='../configs/pnml_fourier.yaml')  # for vanilla pnml
 def execute_experiment(cfg):
     logger.info(f"Run config:\n{cfg.pretty()}")

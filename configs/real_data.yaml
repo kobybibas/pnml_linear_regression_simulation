@@ -1,0 +1,146 @@
+data_dir: ../data             # directory to store the downloaded data in
+n_trails: 10                   # Number of repetition per experiment. Each one with different random initialization
+is_standardize_feature: true
+is_standardize_samples: false
+is_add_bias_term: true
+
+is_underparam_region: true    # Whether to evaluate the learners in the under parameterized region (M < N)
+step_size_over_param: 1       # Evaluate trainset size in the over param region: [1,step_size_under_param,...m]
+num_points_under_params: 20
+is_eval_mdl: true
+is_adaptive_var: false
+
+is_multi_process: true
+num_cpus: -1
+is_get_all_datasets_statistics: false
+
+# dataset to analyze
+dataset_names:
+  - "505_tecator"
+  - "4544_GeographicalOriginalofMusic"
+  - "588_fri_c4_1000_100"
+  - "626_fri_c2_500_50"
+  - "583_fri_c1_1000_50"
+  - "607_fri_c4_1000_50"
+  - "616_fri_c4_500_50"
+  - "618_fri_c3_1000_50"
+  - "622_fri_c2_1000_50"
+  - "603_fri_c0_250_50" # 10
+  - "637_fri_c1_500_50"
+  - "590_fri_c0_1000_50"
+  - "645_fri_c3_500_50"
+  - "648_fri_c1_250_50"
+  - "650_fri_c0_500_50"
+  - "201_pol"
+  - "294_satellite_image"
+  - "653_fri_c0_250_25"
+  - "584_fri_c4_500_25"
+  - "582_fri_c1_500_25" # 20
+#  - "581_fri_c3_500_25"
+#  - "586_fri_c3_1000_25"
+#  - "605_fri_c2_250_25"
+#  - "589_fri_c2_1000_25"
+#  - "592_fri_c4_1000_25"
+#  - "598_fri_c0_1000_25"
+#  - "620_fri_c1_1000_25"
+#  - "633_fri_c0_500_25"
+#  - "643_fri_c2_500_25"
+  - "644_fri_c4_250_25" # 30
+  - "658_fri_c3_250_25"
+  - "651_fri_c0_100_25"
+  - "197_cpu_act"
+  - "573_cpu_act"
+#  - "1191_BNG_pbc" # large dataset: data.shape=(1000000, 19)
+  - "574_house_16H"
+  - "542_pollution"
+  - "195_auto_price"
+  - "207_autoPrice"
+  - "560_bodyfat"      # 40
+#  - "527_analcatdata_election2000"
+#  - "503_wind"
+#  - "1089_USCrime"
+#  - "695_chatfield_4"
+#  - "562_cpu_small"
+#  - "227_cpu_small"
+#  - "1196_BNG_pharynx"
+#  - "602_fri_c3_250_10"
+#  - "634_fri_c2_100_10"
+#  - "627_fri_c2_500_10" #50
+#  - "635_fri_c0_250_10"
+#  - "606_fri_c2_1000_10"
+#  - "604_fri_c4_500_10"
+#  - "1028_SWD"
+#  - "608_fri_c3_1000_10"
+#  - "623_fri_c4_1000_10"
+#  - "621_fri_c0_100_10"
+#  - "1203_BNG_pwLinear"
+#  - "595_fri_c0_1000_10"
+#  - "615_fri_c4_250_10"
+#  - "593_fri_c1_1000_10"
+#  - "215_2dplanes"
+#  - "657_fri_c2_250_10"
+#  - "647_fri_c1_250_10"
+#  - "654_fri_c0_500_10"
+#  - "646_fri_c3_500_10"
+#  - "564_fried"
+#  - "344_mv"
+#  - "641_fri_c1_500_10"
+#  - "229_pwLinear"
+#  - "666_rmftsa_ladata"
+#  - "1595_poker"
+#  - "591_fri_c1_100_10"
+#  - "1199_BNG_echoMonths"
+#  - "1201_BNG_breastTumor"
+#  - "1193_BNG_lowbwt"
+#  - "218_house_8L"
+#  - "537_houses"
+#  - "225_puma8NH"
+#  - "659_sleuth_ex1714"
+#  - "547_no2"
+#  - "561_cpu"
+#  - "522_pm10"
+#  - "706_sleuth_case1202"
+#  - "665_sleuth_case2002"
+#  - "230_machine_cpu"
+#  - "617_fri_c3_500_5"
+#  - "597_fri_c2_500_5"
+#  - "649_fri_c0_500_5"
+#  - "656_fri_c1_100_5"
+#  - "579_fri_c0_250_5"
+#  - "596_fri_c2_250_5"
+#  - "210_cloud"
+#  - "687_sleuth_ex1605"
+#  - "599_fri_c2_1000_5"
+#  - "631_fri_c1_500_5"
+#  - "628_fri_c3_1000_5"
+#  - "601_fri_c1_250_5"
+#  - "624_fri_c0_100_5"
+#  - "609_fri_c0_1000_5"
+#  - "611_fri_c3_100_5"
+#  - "612_fri_c1_1000_5"
+#  - "613_fri_c3_250_5"
+#  - "594_fri_c2_100_5"
+#  - "690_visualizing_galaxy"
+#  - "1027_ESL"
+#  - "529_pollen"
+#  - "485_analcatdata_vehicle"
+#  - "1096_FacultySalaries"
+#  - "1030_ERA"
+#  - "1029_LEV"
+#  - "557_analcatdata_apnea1"
+#  - "556_analcatdata_apnea2"
+#  - "678_visualizing_environmental"
+#  - "523_analcatdata_neavote"
+#  - "519_vinnie"
+#  - "663_rabe_266"
+#  - "228_elusage"
+#  - "192_vineyard"
+#  - "712_chscase_geyser1"
+
+hydra:
+  run:
+    # Output directory
+    dir: ../output/real_data_${now:%Y%m%d_%H%M%S}
+  sweep:
+    dir: ../output/
+    subdir: real_data_${now:%Y%m%d_%H%M%S}_${hydra.job.num}

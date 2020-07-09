@@ -114,7 +114,8 @@ class Pnml:
     #     p_y = rv.pdf(y_to_eval)
     #     return p_y
 
-    def fit_least_squares_estimator(self, phi: np.ndarray, y: np.ndarray, lamb: float = 0.0) -> np.ndarray:
+    @staticmethod
+    def fit_least_squares_estimator(phi: np.ndarray, y: np.ndarray, lamb: float = 0.0) -> np.ndarray:
         """
         Fit least squares estimator
         :param phi: the training set features matrix.

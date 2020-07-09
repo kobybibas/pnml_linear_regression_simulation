@@ -68,3 +68,19 @@ def calc_nf_from_genie_files(genie_files_base_dir: str, sigma_square: float = 1e
         debug_list.append({'nf': nf, 'probs': probs, 'y_vec': y_vec, 'file': f})
     regrets = np.log(nfs)
     return regrets, debug_list
+
+
+def calc_theta_mn(x_arr: np.ndarray, y_vec: np.ndarray) -> np.ndarray:
+    # x_arr: each row is feature vec
+
+    n, m = x_arr.shape
+
+    if n >= m:
+        # under parameterized region
+        inv = np.linalg.inv(x_arr.T @ x_arr)
+        theta = inv @ x_arr.T @ y_vec
+    else:
+        # over parameterized region
+        inv = np.linalg.inv(x_arr @ x_arr.T)
+        theta = x_arr.T @ inv @ y_vec
+    return theta
