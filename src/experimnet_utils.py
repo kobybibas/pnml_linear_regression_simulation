@@ -8,12 +8,13 @@ import numpy as np
 from tqdm import tqdm
 
 from data_utils import DataBase
-from pnml_utils import Pnml
+from learner_classes.pnml_utils import Pnml
 
 logger = logging.getLogger(__name__)
 
 
-def execute_x_vec(x_test_array: np.ndarray, data_h: DataBase, pnml_h: Pnml, out_dir: str, is_mp: bool = False) -> list:
+def execute_x_vec(x_test_array: np.ndarray, data_h: DataBase, pnml_h: Pnml, out_dir: str,
+                  is_mp: bool = False, is_save_outputs: bool = True) -> list:
     """
     For each x point, calculate its regret.
     :param x_test_array: x array that contains the x points that will be calculated
@@ -30,7 +31,6 @@ def execute_x_vec(x_test_array: np.ndarray, data_h: DataBase, pnml_h: Pnml, out_
     save_theta_erm_file_name = osp.join(out_dir,
                                         'res_theta_erm_model_degree_{}_lamb_{}.npy'.format(data_h.model_degree,
                                                                                            pnml_h.lamb))
-    np.save(save_theta_erm_file_name, pnml_h.theta_erm)
     os.makedirs(save_dir_genies_outputs, exist_ok=True)
 
     # Iterate on test samples
@@ -38,8 +38,11 @@ def execute_x_vec(x_test_array: np.ndarray, data_h: DataBase, pnml_h: Pnml, out_
         res_list = execute_x_test_array(x_test_array, data_h, pnml_h, save_file_name, save_dir_genies_outputs)
     else:
         res_list = execute_x_test_array_mp(x_test_array, data_h, pnml_h, save_file_name, save_dir_genies_outputs)
-    logger.info('Save to {}'.format(save_file_name))
-    np.save(save_file_name, res_list)
+
+    if is_save_outputs is True:
+        logger.info('Save to {}'.format(save_file_name))
+        np.save(save_theta_erm_file_name, pnml_h.theta_erm)
+        np.save(save_file_name, res_list)
 
     return res_list
 

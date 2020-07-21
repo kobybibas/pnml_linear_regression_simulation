@@ -21,15 +21,14 @@ class DataBase:
         # Matrix of training feature [phi0;phi1;phi2...]. phi is the features phi(x)
         self.phi_train = self.create_train_features()
 
-    def create_train_features(self):
+    def create_train_features(self) -> np.ndarray:
         """
         Convert data points to feature matrix: phi=[x0^0,x0^1,x0^2...;x1^0,x1^1,x1^2...;x2^0,x2^1,x2^2...]
+        Each row corresponds to feature vector.
         :return: phi: training set feature matrix.
         """
-
-        # Create Feature matrix
         logger.info('Create train: num of features {}'.format(self.model_degree))
-        phi_train = self.convert_to_features()
+        phi_train = self.convert_to_features().T
         logger.info('self.phi_train.shape: {}'.format(phi_train.shape))
         return phi_train
 

@@ -1,20 +1,23 @@
-data_dir: ../data             # directory to store the downloaded data in
-n_trails: 10                   # Number of repetition per experiment. Each one with different random initialization
+data_dir: ../data                     # directory to store the downloaded data in
+n_trails: 5                          # Number of repetition per experiment. Each with different random initialization
 is_standardize_feature: true
 is_standardize_samples: false
 is_add_bias_term: true
 
-is_underparam_region: true    # Whether to evaluate the learners in the under parameterized region (M < N)
-step_size_over_param: 1       # Evaluate trainset size in the over param region: [1,step_size_under_param,...m]
-num_points_under_params: 20
+is_underparam_region: true            # Whether to evaluate the learners in the under parameterized region (m < n)
+num_trainset_sizes_over_param: 100    # Number of trainset sizes. linspace(1, n_features, num_trainset_sizes_over_param)
+num_trainset_sizes_under_param: 20    # Number of trainset sizes. linspace(n_features, len(trainset, num_trainset_sizes_under_param)
 is_eval_mdl: true
+is_eval_empirical_pnml: true
+is_eval_analytical_pnml: true
+
 is_adaptive_var: false
 
-is_multi_process: true
-num_cpus: -1
-is_get_all_datasets_statistics: false
+is_local_mode: false
+num_cpus: -1                            # Number of cpu to use. Set -1 to use all available cpus.
+is_datasets_statistics: false
 
-# dataset to analyze
+# Datasets to analyze
 dataset_names:
   - "505_tecator"
   - "4544_GeographicalOriginalofMusic"
@@ -140,7 +143,7 @@ dataset_names:
 hydra:
   run:
     # Output directory
-    dir: ../output/real_data_${now:%Y%m%d_%H%M%S}
+    dir: ../output/real_data_${now:%Y%m%d_%H%m%S}
   sweep:
     dir: ../output/
-    subdir: real_data_${now:%Y%m%d_%H%M%S}_${hydra.job.num}
+    subdir: real_data_${now:%Y%m%d_%H%m%S}_${hydra.job.num}

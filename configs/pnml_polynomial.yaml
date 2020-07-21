@@ -17,7 +17,7 @@ is_adaptive: false
 hydra:
   run:
     # Output directory
-    dir: ../output/pnml_polynomial_${now:%Y%m%d_%H%M%S}
+    dir: ../output/pnml_polynomial_${now:%Y%m%d_%H%m%S}
   sweep:
     dir: ../output/
-    subdir: pnml_polynomial_${now:%Y%m%d_%H%M%S}_${hydra.job.num}
+    subdir: pnml_polynomial_${now:%Y%m%d_%H%m%S}_${hydra.job.num}
