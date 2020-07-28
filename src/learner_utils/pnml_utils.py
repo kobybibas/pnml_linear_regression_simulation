@@ -2,9 +2,10 @@ import logging
 import time
 
 import numpy as np
-import scipy.optimize
+import numpy.linalg as npl
+import scipy.optimize as optimize
 
-from learner_classes.learner_utils import estimate_sigma_with_valset
+from learner_utils.learner_helpers import estimate_sigma_with_valset, compute_logloss, compute_mse, calc_theta_norm
 
 logger = logging.getLogger(__name__)
 
@@ -29,10 +30,10 @@ def fit_least_squares_estimator(phi_arr: np.ndarray, y: np.ndarray, lamb: float 
     :param phi_arr: The training set features matrix. Each row represents an example.
     :param y: the labels vector.
     :param lamb: regularization term.
-    :return: the fitted parameters.
+    :return: the fitted parameters. A column vector
     """
     phi_t_phi = phi_arr.T @ phi_arr
-    inv = np.linalg.pinv(phi_t_phi + lamb * np.eye(phi_t_phi.shape[0], phi_t_phi.shape[1]))
+    inv = npl.pinv(phi_t_phi + lamb * np.eye(phi_t_phi.shape[0], phi_t_phi.shape[1]))
     theta = inv @ phi_arr.T @ y
     theta = np.expand_dims(theta, 1)
     return theta
@@ -49,20 +50,37 @@ def compute_pnml_logloss(x_arr: np.ndarray, y_true: np.ndarray, theta_genies: np
     return logloss.mean()
 
 
-def calc_theta_norm(theta: np.ndarray):
-    return (theta ** 2).mean()
+def fit_overparam_genie(phi_train: np.ndarray, y_train: np.ndarray,
+                        phi_test: np.ndarray, y_test: np.ndarray, norm_constrain: float) -> np.ndarray:
+    # Add train to test
+    phi_arr = add_test_to_train(phi_train, phi_test)
+    y = np.append(y_train, y_test)
+
+    # Fit linear regression
+    theta_genie = fit_least_squares_with_max_norm_constrain(phi_arr, y, norm_constrain, minimize_dict=None)
+    return theta_genie
+
+
+def fit_underparam_genie(phi_train: np.ndarray, y_train: np.ndarray, phi_test: np.ndarray, y_test: np.ndarray):
+    # Add train to test
+    phi_arr = add_test_to_train(phi_train, phi_test)
+    y = np.append(y_train, y_test)
+
+    assert phi_arr.shape[0] == len(y)
+
+    # Fit linear regression
+    theta_genie = fit_least_squares_estimator(phi_arr, y, lamb=0.0)
+    return theta_genie
 
 
 def fit_least_squares_with_max_norm_constrain(phi_arr: np.ndarray, y: np.ndarray, max_norm: float,
-                                              minimize_dict: dict = None,
-                                              theta_0: np.ndarray = None) -> np.ndarray:
+                                              minimize_dict: dict = None) -> np.ndarray:
     """
     Fit least squares estimator. Constrain it by the max norm constrain
     :param phi_arr: data matrix. Each row represents an example.
     :param y: label vector
     :param max_norm: the constraint of the fitted parameters.
     :param minimize_dict: configuration for minimization function.
-    :param theta_0: the initial guess of the learned parameters.
     :return: fitted parameters that satisfy the max norm constrain
     """
     n, m = phi_arr.shape
@@ -70,29 +88,46 @@ def fit_least_squares_with_max_norm_constrain(phi_arr: np.ndarray, y: np.ndarray
 
     # apply default minimization params
     if minimize_dict is None:
-        minimize_dict = {'options': {'disp': False, 'maxiter': 100000, 'ftol': 1e-12}}
+        minimize_dict = {'disp': False, 'maxiter': 100000, 'ftol': 1e-6}
 
-    def minimization_constrain(lamb_fit):
+    def calc_theta_norm_based_on_lamb(lamb_root_fit):
+        lamb_fit = lamb_root_fit ** 2
         theta_fit = fit_least_squares_estimator(phi_arr, y, lamb=lamb_fit)
         return calc_theta_norm(theta_fit)
 
-    def mse(lamb_fit):
+    def mse(lamb_root_fit):
+        lamb_fit = lamb_root_fit ** 2  # 0 <= lambda
         theta_fit = fit_least_squares_estimator(phi_arr, y, lamb=lamb_fit)
-        return np.power(y - phi_arr @ theta_fit, 2).mean()
+        y_hat = (phi_arr @ theta_fit).squeeze()
+        return npl.norm(y - y_hat)
 
     # Initial gauss
-    lamb_0 = 1.0
+    theta_0 = fit_least_squares_estimator(phi_arr, y, lamb=0.0)
+    norm_0 = calc_theta_norm(theta_0)
+    lamb_0 = np.array([norm_0 / max_norm])
 
     # Optimize
-    nonlinear_constraint = scipy.optimize.NonlinearConstraint(minimization_constrain, 0, max_norm)
-    res = scipy.optimize.minimize(mse, lamb_0, constraints=[nonlinear_constraint], options=minimize_dict['options'])
-    lamb = res.x
+    res = optimize.minimize(mse, lamb_0, method='SLSQP', options=minimize_dict,
+                            # |theta|_2 <= max_norm
+                            constraints=[optimize.NonlinearConstraint(calc_theta_norm_based_on_lamb,
+                                                                      0.0,  # Min
+                                                                      max_norm + np.finfo('float').eps  # Max
+                                                                      )])
+    # Verify output
+    lamb = res.x ** 2
     theta = fit_least_squares_estimator(phi_arr, y, lamb=lamb)
 
-    if res.success == False:
+    if bool(res.success) is False:
+        norm = calc_theta_norm(theta)
         logger.warning('fit_least_squares_with_max_norm_constrain: Failed')
-        logger.warning('y: {}. [||theta||^2 max_norm]= [{} {}]'.format(y[-1], calc_theta_norm(theta), max_norm))
+        logger.warning('y={}. [||theta|| max_norm ||theta_0||]= [{} {} {}]'.format(y[-1],
+                                                                                   norm,
+                                                                                   max_norm,
+                                                                                   calc_theta_norm(theta_0)))
+        logger.warning('np.abs(norm - max_norm)={}]'.format(np.abs(norm - max_norm)))
+        logger.warning('lamb [initial fitted]=[{} {}]'.format(lamb_0, lamb))
         logger.warning(res)
+
     return theta
 
 
@@ -164,11 +199,10 @@ class Pnml:
         genies_probs = (1 / np.sqrt(2 * np.pi * var)) * np.exp(-(y_trained - y_hat) ** 2 / (2 * var))
         return genies_probs
 
-    def execute_regret_calc(self, phi_test: np.array, y_test_true: float = None) -> float:
+    def execute_regret_calc(self, phi_test: np.array) -> float:
         """
         Calculate normalization factor using numerical integration
         :param phi_test: test features to evaluate.
-        :param y_test_true: the true test label. If supplied return the genie params.
         :return: log normalization factor.
         """
         if self.theta_erm is None:
@@ -180,12 +214,6 @@ class Pnml:
         y_pred = self.theta_erm.T @ phi_test
         y_vec = self.y_to_eval + y_pred
 
-        # Add the true test label to the evaluation vec
-        y_test_idx = None
-        if y_test_true is not None:
-            y_to_eval = np.sort(np.unique(np.append(y_vec, y_test_true)))
-            y_test_idx = int(np.where(y_to_eval == y_test_true)[0])
-
         # Calc genies predictions
         thetas = [self.fit_least_squares_estimator(phi_arr, np.append(self.y_train, y)) for y in y_vec]
         y_hats = np.array([theta.T @ phi_test for theta in thetas]).squeeze()
@@ -195,9 +223,7 @@ class Pnml:
         norm_factor = np.trapz(genies_probs, x=y_vec)
 
         # The genies predictors
-        self.genies_output = {'y_vec': y_vec, 'probs': genies_probs, 'epsilons': y_vec - y_hats,
-                              # Get theta genie
-                              'theta_genie': thetas[y_test_idx] if y_test_true is not None else None}
+        self.genies_output = {'y_vec': y_vec, 'probs': genies_probs, 'epsilons': y_vec - y_hats}
         self.norm_factor = norm_factor
         regret = np.log(norm_factor)
         return regret
@@ -222,17 +248,14 @@ class PnmlMinNorm(Pnml):
 
     def fit_least_squares_estimator(self, phi_arr: np.ndarray, y: np.ndarray) -> np.ndarray:
         max_norm = self.max_norm
-        theta = fit_least_squares_with_max_norm_constrain(phi_arr, y, max_norm,
-                                                          minimize_dict=None, theta_0=self.theta_erm)
+        theta = fit_least_squares_with_max_norm_constrain(phi_arr, y, max_norm, minimize_dict=None)
         return theta
 
 
-def calc_empirical_pnml_performance(x_train: np.ndarray, y_train: np.ndarray,
-                                    x_val: np.ndarray, y_val: np.ndarray,
-                                    x_test: np.ndarray, y_test: np.ndarray,
-                                    theta_erm: np.ndarray = None,
-                                    theta_genies_out=None) -> (dict, np.ndarray):
-    n_train, num_features = x_train.shape
+def calc_empirical_pnml_performance(x_train: np.ndarray, y_train: np.ndarray, x_val: np.ndarray, y_val: np.ndarray,
+                                    x_test: np.ndarray, y_test: np.ndarray, theta_genies,
+                                    theta_erm: np.ndarray = None) -> (dict, np.ndarray):
+    n_train, n_features = x_train.shape
 
     # Fit ERM
     if theta_erm is None:
@@ -240,22 +263,22 @@ def calc_empirical_pnml_performance(x_train: np.ndarray, y_train: np.ndarray,
     var = estimate_sigma_with_valset(x_val, y_val, theta_erm)
 
     # Empirical pNML
-    if n_train > num_features:
+    if n_train > n_features:
         pnml_h = Pnml(phi_train=x_train, y_train=y_train, lamb=0.0, var=var)
     else:
         pnml_h = PnmlMinNorm(constrain_factor=1.0, phi_train=x_train, y_train=y_train, lamb=0.0, var=var)
 
-    y_max = 20 * (max(y_train.max(), y_test.max()) - min(y_train.min(), y_test.min()))
-    y_min, y_num, is_adaptive = 1e-9, 60, False  # todo: based on data
-    pnml_h.set_y_interval(y_min, y_max, y_num, is_adaptive=is_adaptive)
-    regrets, norm_factors, theta_genies = [], [], []
+    y_all = np.append(y_train, y_test)
+    y_min, y_max = 1e-2 * np.diff(np.sort(y_all)).min(), 1e2 * (y_all.max() - y_all.min())
+    y_min = max(y_min, 1e-12)
+    pnml_h.set_y_interval(y_min, y_max, y_num=100, is_adaptive=False)
+    regrets, norm_factors = [], []
     for j, (x_test_i, y_test_i) in enumerate(zip(x_test, y_test)):
         t0 = time.time()
-        regret = pnml_h.execute_regret_calc(x_test_i, y_test_i)
+        regret = pnml_h.execute_regret_calc(x_test_i)
         norm_factor = pnml_h.norm_factor
         regrets.append(regret)
         norm_factors.append(norm_factor)
-        theta_genies.append(pnml_h.genies_output['theta_genie'])
 
         # Some check for converges:
         if regret < 0:
@@ -264,20 +287,49 @@ def calc_empirical_pnml_performance(x_train: np.ndarray, y_train: np.ndarray,
         if pnml_h.genies_output['probs'][-1] > np.finfo('float').eps:
             # Expected probability 0 at the edges
             logger.warning('Warning. Interval is too small. prob={}'.format(pnml_h.genies_output['probs'][-1]))
-        logger.info('[{}/{}] y_test_i={} regret={:.2f} in {:.2f} sec'.format(j, len(y_test),
-                                                                             y_test_i, regret, time.time() - t0))
+        logger.info('[{}/{}] y_test_i={:.2f} regret={:.4f} in {:.1f} sec'.format(j, len(y_test),
+                                                                                 y_test_i, regret, time.time() - t0))
 
-        if False:
+        if False:  # Visualize for debug
             import matplotlib.pyplot as plt
             plt.plot(pnml_h.genies_output['y_vec'], pnml_h.genies_output['probs'], '*')
-            plt.axvline(x=y_test_i, label='True', color='g')
+            plt.axvline(x=y_test_i, label='True', lcolor='g')
             plt.axvline(x=theta_erm.T @ x_test_i, label='ERM', color='r')
             plt.legend()
-            # plt.xscale('log')
             plt.show()
 
     res_dict = {'regret': np.mean(regrets),
                 'test_logloss': compute_pnml_logloss(x_test, y_test, theta_genies, var, norm_factors)}
+    return res_dict
+
+
+def calc_genie_performance(x_train: np.ndarray, y_train: np.ndarray,
+                           x_val: np.ndarray, y_val: np.ndarray,
+                           x_test: np.ndarray, y_test: np.ndarray,
+                           theta_erm: np.ndarray = None,
+                           theta_genies_out=None) -> (dict, np.ndarray):
+    n_train, num_features = x_train.shape
+
+    # Fit ERM
+    if theta_erm is None:
+        theta_erm = fit_least_squares_estimator(x_train, y_train, lamb=0.0)
+    var = estimate_sigma_with_valset(x_val, y_val, theta_erm)
+
+    # Fit genie
+    if n_train > num_features:
+        # under param region
+        theta_genies = [fit_underparam_genie(x_train, y_train, x.T, y) for x, y in zip(x_test, y_test)]
+    else:
+        # over param region
+        norm_constrain = calc_theta_norm(theta_erm)
+        theta_genies = [fit_overparam_genie(x_train, y_train, x.T, y, norm_constrain) for x, y in zip(x_test, y_test)]
+
+    # Metric
+    res_dict = {
+        'test_logloss': np.mean(
+            [compute_logloss(x, y, theta, var) for x, y, theta in zip(x_test, y_test, theta_genies)]),
+        'test_mse': np.mean([compute_mse(x, y, theta) for x, y, theta in zip(x_test, y_test, theta_genies)]),
+        'theta_norm': np.mean([calc_theta_norm(theta_i) for theta_i in theta_genies])}
 
     # Fill output
     if theta_genies_out is not None:

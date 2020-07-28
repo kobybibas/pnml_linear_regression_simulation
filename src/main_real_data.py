@@ -7,10 +7,11 @@ import hydra
 import pandas as pd
 import psutil
 import ray
-
+import yaml
+from omegaconf.listconfig import ListConfig
 from data_utils.real_data_utils import create_trainset_sizes_to_eval, execute_trails
 from data_utils.real_data_utils import download_regression_datasets, get_data
-
+import json
 logger = logging.getLogger(__name__)
 
 
@@ -52,16 +53,15 @@ def collect_dataset_experiment_results(ray_task_list: list):
 
     res_list = []
     total_jobs = len(ray_task_list)
+    logger.info('Collecting jobs. total_jobs={}'.format(total_jobs))
     for job_num in range(total_jobs):
         t1 = time.time()
         ready_id, ray_task_list = ray.wait(ray_task_list)
         res_i = ray.get(ready_id[0])
         res_list.append(res_i)
-        logger.info(
-            '[{:04d}/{}] {}. Size [train val test]=[{:03d} {} {}] in {:3.1f} sec. Local time {:3.1f} sec'.format(
-                job_num, total_jobs - 1, res_i['dataset_name'],
-                res_i['trainset_size'], res_i['valset_size'], res_i['testset_size'],
-                         time.time() - t1, res_i['time']))
+        logger.info('[{:04d}/{}] {}. Size [train val test]=[{:03d} {} {}] in {:3.1f}s. Local time {:3.1f}s'.format(
+            job_num, total_jobs - 1, res_i['dataset_name'], res_i['trainset_size'], res_i['valset_size'],
+            res_i['testset_size'], time.time() - t1, res_i['time']))
 
     # Save to file
     res_df = pd.DataFrame(res_list)
@@ -82,12 +82,26 @@ def ray_init(cpu_num: int, is_local_mode: bool):
     logger.info('cpu_count={}. Executing on {}. is_local_mode={}'.format(cpu_count, cpu_to_use, is_local_mode))
     ray.init(local_mode=is_local_mode, num_cpus=cpu_to_use)
 
+def cfg_to_json(cfg):
+    cfg_dict = {}
+    for key, value in cfg.items():
+        if isinstance(value, ListConfig):
+            cfg_dict[key] = [val for val in value]
+        else:
+            cfg_dict[key] = value
+    return cfg_dict
+
+
 
 @hydra.main(config_name='../configs/real_data.yaml')
 def execute_real_datasets_experiment(cfg):
     t0 = time.time()
     logger.info(cfg.pretty())
     out_path = os.getcwd()
+
+    cfg_json = cfg_to_json(cfg)
+    with open(osp.join(out_path, 'config.yaml'), 'w') as fp:
+        json.dump(cfg_json, fp,sort_keys=True, indent=4)
 
     # Move from output directory to src
     os.chdir('../../src')
@@ -101,12 +115,11 @@ def execute_real_datasets_experiment(cfg):
     ray_init(cfg.num_cpus, cfg.is_local_mode)
 
     # Iterate on datasets: send jobs
-    ray_task_list, len_datasets = [], len(cfg.dataset_names)
+    ray_task_list, n_datasets = [], len(cfg.dataset_names)
     for i, dataset_name in enumerate(cfg.dataset_names):
         t1 = time.time()
         ray_task_list += submit_dataset_experiment_jobs(dataset_name, cfg)
-        logger.info('[{}/{}] Finish submit dataset {} in {:.2f} sec'.format(i, len_datasets - 1, dataset_name,
-                                                                            time.time() - t1))
+        logger.info('[{}/{}] Submitted {} in {:.2f} sec'.format(i, n_datasets - 1, dataset_name, time.time() - t1))
 
     # Collect results
     res_df = collect_dataset_experiment_results(ray_task_list)

@@ -3,9 +3,9 @@ import math
 
 import numpy as np
 
-from learner_classes.learner_utils import estimate_sigma_with_valset
-from learner_classes.pnml_utils import add_test_to_train, compute_pnml_logloss
-from learner_classes.pnml_utils import fit_least_squares_with_max_norm_constrain, fit_least_squares_estimator
+from learner_utils.learner_helpers import estimate_sigma_with_valset
+from learner_utils.pnml_utils import compute_pnml_logloss, calc_genie_performance
+from learner_utils.pnml_utils import fit_least_squares_estimator
 
 logger = logging.getLogger(__name__)
 
@@ -75,67 +75,43 @@ class AnalyticalPNML:
         nf = 1 + x_P_N_x
         return nf
 
-    def fit_overparam_genie(self, phi_train, y_train, phi_test, y_test) -> np.ndarray:
-        # Add train to test
-        phi_arr = add_test_to_train(phi_train, phi_test)
-        y = np.append(y_train, y_test)
+    def calc_norm_factor_with_lambda(self, phi_test: np.ndarray, lamb: float)-> float:
+        """
+        Calculate the normalization factor of the pnml learner with regularization.
+        :param phi_test: test features.
+        :param lamb: the regularization factor
+        :return: normalization factor.
+        """
 
-        # Fit linear regression
-        norm_constrain = self.theta_erm_norm
-        theta_genie = fit_least_squares_with_max_norm_constrain(phi_arr, y, norm_constrain,
-                                                                minimize_dict=None, theta_0=self.theta_erm)
-        return theta_genie
-
-    @staticmethod
-    def fit_underparam_genie(phi_train, y_train, phi_test, y_test):
-
-        # Add train to test
-        phi_arr = add_test_to_train(phi_train, phi_test)
-        y = np.append(y_train, y_test)
-
-        assert phi_arr.shape[0] == len(y)
-
-        # Fit linear regression
-        theta_genie = fit_least_squares_estimator(phi_arr, y, lamb=0.0)
-        return theta_genie
+        # x^T P_N^|| x
+        x_P_N_x = np.sum((((self.u.T.dot(phi_test)).squeeze() ** 2) / (self.h_square + lamb)))
+        nf = 1 + x_P_N_x
+        return nf
 
 
-def calc_analytical_pnml_performance(x_train: np.ndarray, y_train: np.ndarray,
-                                     x_val: np.ndarray, y_val: np.ndarray,
-                                     x_test: np.ndarray, y_test: np.ndarray,
-                                     theta_erm: np.ndarray = None,
-                                     theta_genies: list = None) -> (dict, dict, dict):
+def calc_analytical_pnml_performance(x_train: np.ndarray, y_train: np.ndarray, x_val: np.ndarray, y_val: np.ndarray,
+                                     x_test: np.ndarray, y_test: np.ndarray, theta_genies: list = None,
+                                     theta_erm: np.ndarray = None) -> (dict, dict, dict):
     # Fit ERM
     if theta_erm is None:
         theta_erm = fit_least_squares_estimator(x_train, y_train, lamb=0.0)
     var = estimate_sigma_with_valset(x_val, y_val, theta_erm)
 
-    # Initialize output
-    res_dict_pnml, res_dict_pnml_isit, res_dict_genie = {}, {}, {}
-    num_features, trainset_size = x_train.shape
-
     # Fit genie
     pnml_h = AnalyticalPNML(x_train, theta_erm)
     if theta_genies is None:
-        if trainset_size > num_features:
-            # under param region
-            theta_genies = [pnml_h.fit_underparam_genie(x_train, y_train, x.T, y) for x, y in zip(x_test, y_test)]
-        else:
-            # over param region
-            theta_genies = [pnml_h.fit_overparam_genie(x_train, y_train, x.T, y) for x, y in zip(x_test, y_test)]
+        theta_genies = []
+        _ = calc_genie_performance(x_train, y_train, x_val, y_val, x_test, y_test, theta_erm, theta_genies)
+        theta_genies = theta_genies[0]
 
     # pNML
     norm_factors = np.array([pnml_h.calc_over_param_norm_factor(x.T, var) for x in x_test])
-    res_dict_pnml['regret'] = np.log(norm_factors).mean()
-    res_dict_pnml['test_logloss'] = compute_pnml_logloss(x_test, y_test, theta_genies, var, norm_factors)
+    res_dict_pnml = {'regret': np.log(norm_factors).mean(),
+                     'test_logloss': compute_pnml_logloss(x_test, y_test, theta_genies, var, norm_factors)}
 
     # pNML isit
     norm_factors = np.array([pnml_h.calc_under_param_norm_factor(x.T) for x in x_test])
-    res_dict_pnml_isit['regret'] = np.log(norm_factors).mean()
-    res_dict_pnml_isit['test_logloss'] = compute_pnml_logloss(x_test, y_test, theta_genies, var, norm_factors)
+    res_dict_pnml_isit = {'regret': np.log(norm_factors).mean(),
+                          'test_logloss': compute_pnml_logloss(x_test, y_test, theta_genies, var, norm_factors)}
 
-    # Genie
-    res_dict_genie['test_logloss'] = compute_pnml_logloss(x_test, y_test, theta_genies, var, 1.0)
-    res_dict_genie['theta_norm'] = np.mean(np.array(theta_genies) ** 2, axis=0).mean()
-
-    return res_dict_pnml, res_dict_pnml_isit, res_dict_genie
+    return res_dict_pnml, res_dict_pnml_isit

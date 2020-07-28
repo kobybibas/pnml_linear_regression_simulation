@@ -6,8 +6,8 @@ import numpy as np
 
 from data_utils import data_type_dict
 from experimnet_utils import execute_x_vec
-from learner_classes.pnml_min_norm_utils import PnmlMinNorm
-from learner_classes.pnml_utils import Pnml
+from learner_utils.pnml_min_norm_utils import PnmlMinNorm
+from learner_utils.pnml_utils import Pnml
 
 logger = logging.getLogger(__name__)
 

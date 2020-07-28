@@ -8,7 +8,7 @@ import numpy as np
 from tqdm import tqdm
 
 from data_utils import DataBase
-from learner_classes.pnml_utils import Pnml
+from learner_utils.pnml_utils import Pnml
 
 logger = logging.getLogger(__name__)
 

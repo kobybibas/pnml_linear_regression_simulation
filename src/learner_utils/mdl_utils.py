@@ -4,7 +4,7 @@ import numpy as np
 import numpy.linalg as npl
 import scipy.optimize
 
-from learner_classes.learner_utils import compute_mse, compute_logloss, estimate_sigma_with_valset
+from learner_utils.learner_helpers import compute_mse, compute_logloss, estimate_sigma_with_valset, calc_theta_norm
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,8 @@ def compute_practical_mdl_comp(x_train, y_train, variance: float = 1.0, x0: floa
 
 def calc_mdl_performance(x_train: np.ndarray, y_train: np.ndarray, x_val: np.ndarray, y_val: np.ndarray,
                          x_test: np.ndarray, y_test: np.ndarray, var: float) -> dict:
-    mdl_dict = compute_practical_mdl_comp(x_train, y_train, variance=var)
+    with np.errstate(all='ignore'):
+        mdl_dict = compute_practical_mdl_comp(x_train, y_train, variance=var)
     theta_mdl = mdl_dict['theta_hat']
     lambda_opt = mdl_dict['lambda_opt']
     var = estimate_sigma_with_valset(x_val, y_val, theta_mdl)
@@ -52,7 +53,7 @@ def calc_mdl_performance(x_train: np.ndarray, y_train: np.ndarray, x_val: np.nda
     res_dict = {'lambda_opt': lambda_opt,
                 'test_mse': compute_mse(x_test, y_test, theta_mdl),
                 'train_mse': compute_mse(x_train, y_train, theta_mdl),
-                'theta_norm': np.mean(theta_mdl ** 2),
+                'theta_norm': calc_theta_norm(theta_mdl),
                 'test_logloss': compute_logloss(x_test, y_test, theta_mdl, var),
                 'variance': var}
     return res_dict

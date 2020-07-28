@@ -1,5 +1,8 @@
 import numpy as np
+import numpy.linalg as npl
 
+def calc_theta_norm(theta: np.ndarray) -> float:
+    return npl.norm(theta)
 
 def compute_mse(x_data: np.ndarray, y_labels: np.ndarray, theta: np.ndarray) -> float:
     y_hat_labels = x_data @ theta

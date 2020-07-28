@@ -1,6 +1,6 @@
 import numpy as np
 
-from learner_classes.learner_utils import compute_mse, compute_logloss, estimate_sigma_with_valset
+from learner_utils.learner_helpers import compute_mse, compute_logloss, estimate_sigma_with_valset, calc_theta_norm
 
 
 def calc_theta_mn(x_arr: np.ndarray, y_vec: np.ndarray) -> np.ndarray:
@@ -21,7 +21,7 @@ def calc_mn_learner_performance(x_train: np.ndarray, y_train: np.ndarray,
 
     res_dict_mn = {'test_mse': compute_mse(x_test, y_test, theta_mn),
                    'train_mse': compute_mse(x_train, y_train, theta_mn),
-                   'theta_norm': np.mean(theta_mn ** 2),
+                   'theta_norm': calc_theta_norm(theta_mn),
                    'test_logloss': compute_logloss(x_test, y_test, theta_mn, var),
                    'variance': var}
     return res_dict_mn
