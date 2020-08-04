@@ -4,16 +4,16 @@ import numpy.linalg as npl
 def calc_theta_norm(theta: np.ndarray) -> float:
     return npl.norm(theta)
 
-def compute_mse(x_data: np.ndarray, y_labels: np.ndarray, theta: np.ndarray) -> float:
-    y_hat_labels = x_data @ theta
-    return float(np.mean((y_hat_labels - y_labels) ** 2))
+def compute_mse(x_data: np.ndarray, y_labels: np.ndarray, theta: np.ndarray) -> np.ndarray:
+    y_hat = x_data @ theta
+    return (y_hat - y_labels) ** 2
 
 
-def compute_logloss(x_arr: np.ndarray, y: np.ndarray, theta: np.ndarray, var: float) -> float:
+def compute_logloss(x_arr: np.ndarray, y_true: np.ndarray, theta: np.ndarray, var: float) -> np.ndarray:
     y_hat = x_arr @ theta
-    prob = np.exp(-(y_hat - y) ** 2 / (2 * var)) / np.sqrt(2 * np.pi * var)
+    prob = np.exp(-(y_hat - y_true) ** 2 / (2 * var)) / np.sqrt(2 * np.pi * var)
     logloss = -np.log(prob + np.finfo('float').eps)
-    return logloss.mean()
+    return logloss
 
 
 def estimate_sigma_with_valset(x_val: np.ndarray, y_val: np.ndarray, theta: np.ndarray) -> float:

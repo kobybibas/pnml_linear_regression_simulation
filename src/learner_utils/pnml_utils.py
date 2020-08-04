@@ -3,6 +3,7 @@ import time
 
 import numpy as np
 import numpy.linalg as npl
+import pandas as pd
 import scipy.optimize as optimize
 
 from learner_utils.learner_helpers import estimate_sigma_with_valset, compute_logloss, compute_mse, calc_theta_norm
@@ -47,7 +48,7 @@ def compute_pnml_logloss(x_arr: np.ndarray, y_true: np.ndarray, theta_genies: np
     # Normalize by the pnml normalization factor
     prob /= nfs
     logloss = -np.log(prob + np.finfo('float').eps)
-    return logloss.mean()
+    return logloss
 
 
 def fit_overparam_genie(phi_train: np.ndarray, y_train: np.ndarray,
@@ -117,7 +118,7 @@ def fit_least_squares_with_max_norm_constrain(phi_arr: np.ndarray, y: np.ndarray
     lamb = res.x ** 2
     theta = fit_least_squares_estimator(phi_arr, y, lamb=lamb)
 
-    if bool(res.success) is False:
+    if bool(res.success) is False and not res.message == 'Positive directional derivative for linesearch':
         norm = calc_theta_norm(theta)
         logger.warning('fit_least_squares_with_max_norm_constrain: Failed')
         logger.warning('y={}. [||theta|| max_norm ||theta_0||]= [{} {} {}]'.format(y[-1],
@@ -254,7 +255,7 @@ class PnmlMinNorm(Pnml):
 
 def calc_empirical_pnml_performance(x_train: np.ndarray, y_train: np.ndarray, x_val: np.ndarray, y_val: np.ndarray,
                                     x_test: np.ndarray, y_test: np.ndarray, theta_genies,
-                                    theta_erm: np.ndarray = None) -> (dict, np.ndarray):
+                                    theta_erm: np.ndarray = None) -> pd.DataFrame:
     n_train, n_features = x_train.shape
 
     # Fit ERM
@@ -298,16 +299,16 @@ def calc_empirical_pnml_performance(x_train: np.ndarray, y_train: np.ndarray, x_
             plt.legend()
             plt.show()
 
-    res_dict = {'regret': np.mean(regrets),
-                'test_logloss': compute_pnml_logloss(x_test, y_test, theta_genies, var, norm_factors)}
-    return res_dict
+    res_dict = {'empirical_pnml_regret': regrets,
+                'empirical_pnml_test_logloss': compute_pnml_logloss(x_test, y_test, theta_genies, var, norm_factors)}
+    df = pd.DataFrame(res_dict)
+    return df
 
 
 def calc_genie_performance(x_train: np.ndarray, y_train: np.ndarray,
                            x_val: np.ndarray, y_val: np.ndarray,
                            x_test: np.ndarray, y_test: np.ndarray,
-                           theta_erm: np.ndarray = None,
-                           theta_genies_out=None) -> (dict, np.ndarray):
+                           theta_erm: np.ndarray = None, theta_genies_out=None) -> pd.DataFrame:
     n_train, num_features = x_train.shape
 
     # Fit ERM
@@ -326,12 +327,14 @@ def calc_genie_performance(x_train: np.ndarray, y_train: np.ndarray,
 
     # Metric
     res_dict = {
-        'test_logloss': np.mean(
-            [compute_logloss(x, y, theta, var) for x, y, theta in zip(x_test, y_test, theta_genies)]),
-        'test_mse': np.mean([compute_mse(x, y, theta) for x, y, theta in zip(x_test, y_test, theta_genies)]),
-        'theta_norm': np.mean([calc_theta_norm(theta_i) for theta_i in theta_genies])}
+        'genie_test_logloss': [float(compute_logloss(x, y, theta, var)) for x, y, theta in zip(x_test, y_test,
+                                                                                               theta_genies)],
+        'genie_test_mse': [float(compute_mse(x, y, theta)) for x, y, theta in
+                           zip(x_test, y_test, theta_genies)],
+        'genie_theta_norm': [calc_theta_norm(theta_i) for theta_i in theta_genies]}
+    df = pd.DataFrame(res_dict)
 
     # Fill output
     if theta_genies_out is not None:
         theta_genies_out.append(theta_genies)
-    return res_dict
+    return df

@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import os.path as osp
@@ -7,11 +8,11 @@ import hydra
 import pandas as pd
 import psutil
 import ray
-import yaml
 from omegaconf.listconfig import ListConfig
-from data_utils.real_data_utils import create_trainset_sizes_to_eval, execute_trails
+
+from data_utils.real_data_utils import create_trainset_sizes_to_eval, execute_trail
 from data_utils.real_data_utils import download_regression_datasets, get_data
-import json
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,15 +33,18 @@ def submit_dataset_experiment_jobs(dataset_name: str, cfg) -> pd.DataFrame:
     x_all_id = ray.put(x_all)
 
     # Submit tasks
-    task_list = [execute_trails.remote(x_all_id, y_all, cfg.n_trails, trainset_size,
-                                       dataset_name, i, len(trainset_sizes),
-                                       is_eval_mdl=cfg.is_eval_mdl,
-                                       is_eval_empirical_pnml=cfg.is_eval_empirical_pnml,
-                                       is_eval_analytical_pnml=cfg.is_eval_analytical_pnml,
-                                       is_adaptive_var=cfg.is_adaptive_var,
-                                       is_standardize_feature=cfg.is_standardize_feature,
-                                       is_standardize_samples=cfg.is_standardize_samples
-                                       ) for i, trainset_size in enumerate(trainset_sizes)]
+    task_list = []
+    for i, trainset_size in enumerate(trainset_sizes):
+        for trail_num in range(cfg.n_trails):
+            ray_task = execute_trail.remote(x_all_id, y_all, trail_num, trainset_size, dataset_name,
+                                            is_eval_mdl=cfg.is_eval_mdl,
+                                            is_eval_empirical_pnml=cfg.is_eval_empirical_pnml,
+                                            is_eval_analytical_pnml=cfg.is_eval_analytical_pnml,
+                                            is_eval_lambda_pnml=cfg.is_eval_lambda_pnml,
+                                            is_adaptive_var=cfg.is_adaptive_var,
+                                            is_standardize_feature=cfg.is_standardize_feature,
+                                            is_standardize_samples=cfg.is_standardize_samples)
+            task_list.append(ray_task)
     return task_list
 
 
@@ -59,13 +63,17 @@ def collect_dataset_experiment_results(ray_task_list: list):
         ready_id, ray_task_list = ray.wait(ray_task_list)
         res_i = ray.get(ready_id[0])
         res_list.append(res_i)
-        logger.info('[{:04d}/{}] {}. Size [train val test]=[{:03d} {} {}] in {:3.1f}s. Local time {:3.1f}s'.format(
-            job_num, total_jobs - 1, res_i['dataset_name'], res_i['trainset_size'], res_i['valset_size'],
-            res_i['testset_size'], time.time() - t1, res_i['time']))
+
+        # Report
+        dataset_name = res_i['dataset_name'][0]
+        n_trainset, n_valset, n_testset = res_i['trainset_size'][0], res_i['valset_size'][0], res_i['testset_size'][0]
+        logger.info('[{:04d}/{}] {}. Size [train val test]=[{:03d} {} {}] in {:3.1f}s.'.format(
+            job_num, total_jobs - 1, dataset_name, n_trainset, n_valset, n_testset, time.time() - t1))
 
     # Save to file
-    res_df = pd.DataFrame(res_list)
-    res_df = res_df.sort_values(by=['num_features', 'trainset_size', 'dataset_name'], ascending=[False, True, True])
+    res_df = pd.concat(res_list, ignore_index=True, sort=False)
+    res_df = res_df.sort_values(by=['dataset_name', 'num_features', 'trainset_size', 'trail_num'],
+                                ascending=[False, True, True, True])
     return res_df
 
 
@@ -82,6 +90,7 @@ def ray_init(cpu_num: int, is_local_mode: bool):
     logger.info('cpu_count={}. Executing on {}. is_local_mode={}'.format(cpu_count, cpu_to_use, is_local_mode))
     ray.init(local_mode=is_local_mode, num_cpus=cpu_to_use)
 
+
 def cfg_to_json(cfg):
     cfg_dict = {}
     for key, value in cfg.items():
@@ -92,7 +101,6 @@ def cfg_to_json(cfg):
     return cfg_dict
 
 
-
 @hydra.main(config_name='../configs/real_data.yaml')
 def execute_real_datasets_experiment(cfg):
     t0 = time.time()
@@ -101,7 +109,7 @@ def execute_real_datasets_experiment(cfg):
 
     cfg_json = cfg_to_json(cfg)
     with open(osp.join(out_path, 'config.yaml'), 'w') as fp:
-        json.dump(cfg_json, fp,sort_keys=True, indent=4)
+        json.dump(cfg_json, fp, sort_keys=True, indent=4)
 
     # Move from output directory to src
     os.chdir('../../src')

@@ -1,25 +1,25 @@
-data_dir: ../data                     # directory to store the downloaded data in
-n_trails: 5                          # Number of repetition per experiment. Each with different random initialization
+data_dir: ../data                    # directory to store the downloaded data in
+n_trails: 1                          # Number of repetition per experiment. Each with different random initialization
 is_standardize_feature: true
 is_standardize_samples: true
 is_add_bias_term: true
 
-is_underparam_region: true            # Whether to evaluate the learners in the under parameterized region (m < n)
-num_trainset_sizes_over_param:  100    # Number of trainset sizes. linspace(1, n_features, num_trainset_sizes_over_param)
-num_trainset_sizes_under_param:  25    # Number of trainset sizes. linspace(n_features, len(trainset, num_trainset_sizes_under_param)
+is_underparam_region: true           # Whether to evaluate the learners in the under parameterized region (m < n)
+num_trainset_sizes_over_param:  40  # Number of trainset sizes. linspace(1, n_features, num_trainset_sizes_over_param)
+num_trainset_sizes_under_param:  10  # Number of trainset sizes. linspace(n_features, len(trainset, num_trainset_sizes_under_param)
 is_eval_mdl: true
 is_eval_empirical_pnml: true
 is_eval_analytical_pnml: true
+is_eval_lambda_pnml: false
 
 is_adaptive_var: true
 
 is_local_mode: false
-num_cpus: -1                            # Number of cpu to use. Set -1 to use all available cpus.
+num_cpus: -1                         # Number of cpu to use. Set -1 to use all available cpus.
 is_datasets_statistics: false
 
 # Datasets to analyze
 dataset_names:
-#  - "505_tecator"
   - "645_fri_c3_500_50"
 
 hydra:
