@@ -23,9 +23,7 @@ def submit_dataset_experiment_jobs(dataset_name: str, cfg) -> pd.DataFrame:
     n_train, n_features = int(train_ratio * x_all.shape[0]), x_all.shape[1]
 
     # Define train set to evaluate
-    trainset_sizes = create_trainset_sizes_to_eval(n_train, n_features,
-                                                   cfg.num_trainset_sizes_over_param,
-                                                   cfg.is_underparam_region, cfg.num_trainset_sizes_under_param)
+    trainset_sizes = create_trainset_sizes_to_eval(n_train, n_features, cfg.num_trainset_sizes)
     logger.info('{}: [n_data, n_features]=[{} {}]'.format(dataset_name, x_all.shape[0], n_features))
     logger.info(trainset_sizes)
 
@@ -40,8 +38,6 @@ def submit_dataset_experiment_jobs(dataset_name: str, cfg) -> pd.DataFrame:
                                             is_eval_mdl=cfg.is_eval_mdl,
                                             is_eval_empirical_pnml=cfg.is_eval_empirical_pnml,
                                             is_eval_analytical_pnml=cfg.is_eval_analytical_pnml,
-                                            is_eval_lambda_pnml=cfg.is_eval_lambda_pnml,
-                                            is_adaptive_var=cfg.is_adaptive_var,
                                             is_standardize_feature=cfg.is_standardize_feature,
                                             is_standardize_samples=cfg.is_standardize_samples)
             task_list.append(ray_task)

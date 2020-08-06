@@ -50,7 +50,7 @@ def execute_x_vec(x_test_array: np.ndarray, data_h: DataBase, pnml_h: Pnml, out_
 def execute_x_test(x_test: float, data_h: DataBase, pnml_h: Pnml, save_dir_genies_outputs: str) -> dict:
     phi_test = data_h.convert_point_to_features(x_test, data_h.model_degree)
     y_hat_erm = pnml_h.predict_erm(phi_test)
-    regret = pnml_h.execute_regret_calc(phi_test)
+    regret = pnml_h.calc_norm_factor(phi_test)
 
     # Save genies products
     np.save(osp.join(save_dir_genies_outputs, f'genies_outputs_{x_test}.npy'), pnml_h.genies_output)

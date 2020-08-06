@@ -4,7 +4,7 @@ import math
 import numpy as np
 import pandas as pd
 
-from learner_utils.learner_helpers import estimate_sigma_with_valset
+from learner_utils.learner_helpers import estimate_variance_with_valset
 from learner_utils.pnml_utils import compute_pnml_logloss, calc_genie_performance
 from learner_utils.pnml_utils import fit_least_squares_estimator
 
@@ -92,11 +92,11 @@ class AnalyticalPNML:
 
 def calc_analytical_pnml_performance(x_train: np.ndarray, y_train: np.ndarray, x_val: np.ndarray, y_val: np.ndarray,
                                      x_test: np.ndarray, y_test: np.ndarray, theta_genies: list = None,
-                                     theta_erm: np.ndarray = None) -> (pd.DataFrame, pd.DataFrame):
+                                     theta_erm: np.ndarray = None) -> pd.DataFrame:
     # Fit ERM
     if theta_erm is None:
         theta_erm = fit_least_squares_estimator(x_train, y_train, lamb=0.0)
-    var = estimate_sigma_with_valset(x_val, y_val, theta_erm)
+    var = estimate_variance_with_valset(x_val, y_val, theta_erm)
 
     # Fit genie
     pnml_h = AnalyticalPNML(x_train, theta_erm)
@@ -107,15 +107,8 @@ def calc_analytical_pnml_performance(x_train: np.ndarray, y_train: np.ndarray, x
 
     # pNML
     norm_factors = np.array([pnml_h.calc_over_param_norm_factor(x.T, var) for x in x_test])
-    res_dict_pnml = {'analytical_pnml_regret': np.log(norm_factors),
-                     'analytical_pnml_test_logloss': compute_pnml_logloss(x_test, y_test, theta_genies, var,
-                                                                          norm_factors)}
+    res_dict_pnml = {
+        'analytical_pnml_regret': np.log(norm_factors),
+        'analytical_pnml_test_logloss': compute_pnml_logloss(x_test, y_test, theta_genies, var, norm_factors)}
     analytical_pnml_df = pd.DataFrame(res_dict_pnml)
-
-    # pNML isit
-    norm_factors = np.array([pnml_h.calc_under_param_norm_factor(x.T) for x in x_test])
-    res_dict_pnml_isit = {'analytical_pnml_isit_regret': np.log(norm_factors),
-                          'analytical_pnml_isit_test_logloss': compute_pnml_logloss(x_test, y_test, theta_genies, var,
-                                                                                    norm_factors)}
-    analytical_pnml_isit_df = pd.DataFrame(res_dict_pnml_isit)
-    return analytical_pnml_df, analytical_pnml_isit_df
+    return analytical_pnml_df

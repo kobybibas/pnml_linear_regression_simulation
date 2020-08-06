@@ -5,7 +5,7 @@ import numpy.linalg as npl
 import pandas as pd
 import scipy.optimize
 
-from learner_utils.learner_helpers import compute_mse, compute_logloss, estimate_sigma_with_valset, calc_theta_norm
+from learner_utils.learner_helpers import compute_mse, compute_logloss, estimate_variance_with_valset, calc_theta_norm
 
 logger = logging.getLogger(__name__)
 
@@ -49,12 +49,11 @@ def calc_mdl_performance(x_train: np.ndarray, y_train: np.ndarray, x_val: np.nda
         mdl_dict = compute_practical_mdl_comp(x_train, y_train, variance=var)
     theta_mdl = mdl_dict['theta_hat']
     lambda_opt = mdl_dict['lambda_opt']
-    var = estimate_sigma_with_valset(x_val, y_val, theta_mdl)
+    var = estimate_variance_with_valset(x_val, y_val, theta_mdl)
 
     n_test = len(x_test)
     res_dict = {'mdl_lambda_opt': [lambda_opt] * n_test,
                 'mdl_test_mse': compute_mse(x_test, y_test, theta_mdl),
-                # 'train_mse': compute_mse(x_train, y_train, theta_mdl),
                 'mdl_theta_norm': [calc_theta_norm(theta_mdl)] * n_test,
                 'mdl_test_logloss': compute_logloss(x_test, y_test, theta_mdl, var),
                 'mdl_variance': [var] * n_test}
