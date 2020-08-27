@@ -1,14 +1,13 @@
-import json
 import logging
 import os
 import os.path as osp
 import time
 
 import hydra
+import numpy as np
 import pandas as pd
 import psutil
 import ray
-from omegaconf.listconfig import ListConfig
 
 from data_utils.real_data_utils import create_trainset_sizes_to_eval, execute_trail
 from data_utils.real_data_utils import download_regression_datasets, get_data
@@ -19,11 +18,11 @@ logger = logging.getLogger(__name__)
 def submit_dataset_experiment_jobs(dataset_name: str, cfg) -> pd.DataFrame:
     # Get dataset statistic
     train_ratio, val_ratio, test_ratio = 0.6, 0.2, 0.2
-    x_all, y_all = get_data(dataset_name, cfg.data_dir, is_add_bias_term=cfg.is_add_bias_term)
+    x_all, y_all = get_data(dataset_name, cfg.data_dir)
     n_train, n_features = int(train_ratio * x_all.shape[0]), x_all.shape[1]
 
     # Define train set to evaluate
-    trainset_sizes = create_trainset_sizes_to_eval(n_train, n_features, cfg.num_trainset_sizes)
+    trainset_sizes = create_trainset_sizes_to_eval(cfg.trainset_sizes, n_train, n_features, cfg.num_trainset_sizes)
     logger.info('{}: [n_data, n_features]=[{} {}]'.format(dataset_name, x_all.shape[0], n_features))
     logger.info(trainset_sizes)
 
@@ -39,7 +38,9 @@ def submit_dataset_experiment_jobs(dataset_name: str, cfg) -> pd.DataFrame:
                                             is_eval_empirical_pnml=cfg.is_eval_empirical_pnml,
                                             is_eval_analytical_pnml=cfg.is_eval_analytical_pnml,
                                             is_standardize_feature=cfg.is_standardize_feature,
-                                            is_standardize_samples=cfg.is_standardize_samples)
+                                            is_standardize_samples=cfg.is_standardize_samples,
+                                            is_add_bias_term=cfg.is_add_bias_term,
+                                            pnml_params_dict=cfg.pnml_params_dict)
             task_list.append(ray_task)
     return task_list
 
@@ -87,25 +88,15 @@ def ray_init(cpu_num: int, is_local_mode: bool):
     ray.init(local_mode=is_local_mode, num_cpus=cpu_to_use)
 
 
-def cfg_to_json(cfg):
-    cfg_dict = {}
-    for key, value in cfg.items():
-        if isinstance(value, ListConfig):
-            cfg_dict[key] = [val for val in value]
-        else:
-            cfg_dict[key] = value
-    return cfg_dict
-
-
 @hydra.main(config_name='../configs/real_data.yaml')
 def execute_real_datasets_experiment(cfg):
     t0 = time.time()
     logger.info(cfg.pretty())
     out_path = os.getcwd()
 
-    cfg_json = cfg_to_json(cfg)
-    with open(osp.join(out_path, 'config.yaml'), 'w') as fp:
-        json.dump(cfg_json, fp, sort_keys=True, indent=4)
+    # Set seed for debugging
+    if cfg.seed >= 0:
+        np.random.seed(cfg.seed)
 
     # Move from output directory to src
     os.chdir('../../src')

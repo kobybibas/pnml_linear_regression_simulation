@@ -10,16 +10,16 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
 
-from learner_utils.analytical_pnml_utils import calc_analytical_pnml_performance, calc_genie_performance
-from learner_utils.learner_helpers import estimate_variance_with_valset
+from learner_utils.analytical_pnml_utils import calc_analytical_pnml_performance
+from learner_utils.learner_helpers import calc_var_with_valset
 from learner_utils.mdl_utils import calc_mdl_performance
 from learner_utils.minimum_norm_utils import calc_mn_learner_performance, calc_theta_mn
-from learner_utils.pnml_utils import calc_empirical_pnml_performance
+from learner_utils.pnml_utils import calc_empirical_pnml_performance, calc_genie_performance
 
 logger = logging.getLogger(__name__)
 
 
-def create_trainset_sizes_to_eval(n_train: int, n_features: int, num_trainset_sizes: int) -> list:
+def create_trainset_sizes_to_eval(trainset_sizes: list, n_train: int, n_features: int, num_trainset_sizes: int) -> list:
     """
     Create list of training set sizes to evaluate.
     :param n_train: Training set size.
@@ -27,9 +27,10 @@ def create_trainset_sizes_to_eval(n_train: int, n_features: int, num_trainset_si
     :param num_trainset_sizes: How much training set sizes to evaluate.
     :return: list of training set sizes.
     """
-    trainset_sizes = np.logspace(np.log10(2), np.log10(n_train), num_trainset_sizes).astype(int)
-    trainset_sizes = np.append(trainset_sizes, n_features)
-    trainset_sizes = np.unique(trainset_sizes)
+    if len(trainset_sizes) == 0:
+        trainset_sizes = np.logspace(np.log10(2), np.log10(n_train), num_trainset_sizes).astype(int)
+        trainset_sizes = np.append(trainset_sizes, n_features)
+        trainset_sizes = np.unique(trainset_sizes)
     return trainset_sizes
 
 
@@ -62,14 +63,13 @@ def standardize_feature(x_train: np.ndarray, x_val: np.ndarray, x_test: np.ndarr
     return x_train_stand, x_val_stand, x_test_stand
 
 
-def get_data(dataset_name: str, data_dir: str = None, is_add_bias_term: bool = True):
+def get_data(dataset_name: str, data_dir: str = None):
     x_all, y_all = pmlb.fetch_data(dataset_name, return_X_y=True, local_cache_dir=data_dir)
-    if is_add_bias_term is True:
-        x_all = np.hstack((x_all, np.ones((x_all.shape[0], 1))))
     return x_all, y_all
 
 
-def split_dataset(x_all, y_all, is_standardize_feature: bool = False, is_standardize_samples: bool = True):
+def split_dataset(x_all, y_all, is_standardize_feature: bool = False, is_standardize_samples: bool = True,
+                  is_add_bias_term: bool = True):
     if is_standardize_samples is True:
         # Normalize the data. To match mdl-comp preprocess
         x_all, y_all = standardize_samples(x_all, y_all)
@@ -82,13 +82,20 @@ def split_dataset(x_all, y_all, is_standardize_feature: bool = False, is_standar
         # apply standardization on numerical features
         x_train, x_val, x_test = standardize_feature(x_train, x_val, x_test)
 
+    if is_add_bias_term is True:
+        x_train = np.hstack((x_train, np.ones((x_train.shape[0], 1))))
+        x_val = np.hstack((x_val, np.ones((x_val.shape[0], 1))))
+        x_test = np.hstack((x_test, np.ones((x_test.shape[0], 1))))
+
     return x_train, y_train, x_val, y_val, x_test, y_test
 
 
 @ray.remote
 def execute_trail(x_all: np.ndarray, y_all: np.ndarray, trail_num: int, trainset_size: int, dataset_name: str,
                   is_eval_mdl: bool, is_eval_empirical_pnml: bool, is_eval_analytical_pnml: bool,
-                  is_standardize_feature: bool, is_standardize_samples: bool, debug_print: bool = True):
+                  is_standardize_feature: bool, is_standardize_samples: bool, is_add_bias_term: bool,
+                  pnml_params_dict: dict,
+                  debug_print: bool = True):
     t0 = time.time()
 
     # Execute trails
@@ -98,7 +105,8 @@ def execute_trail(x_all: np.ndarray, y_all: np.ndarray, trail_num: int, trainset
     t1 = time.time()
     x_train, y_train, x_val, y_val, x_test, y_test = split_dataset(x_all, y_all,
                                                                    is_standardize_feature=is_standardize_feature,
-                                                                   is_standardize_samples=is_standardize_samples)
+                                                                   is_standardize_samples=is_standardize_samples,
+                                                                   is_add_bias_term=is_add_bias_term)
     x_train, y_train = x_train[:trainset_size, :], y_train[:trainset_size]
     debug_print and logger.info('split_dataset in {:.3f} sec'.format(time.time() - t1))
 
@@ -114,34 +122,35 @@ def execute_trail(x_all: np.ndarray, y_all: np.ndarray, trail_num: int, trainset
 
     # Compute variance
     theta_mn = calc_theta_mn(x_train, y_train)
-    var = estimate_variance_with_valset(x_val, y_val, theta_mn)
+    var = calc_var_with_valset(x_val, y_val, theta_mn)
 
     # Minimum norm learner
     t1 = time.time()
-    mn_df = calc_mn_learner_performance(x_train, y_train, x_val, y_val, x_test, y_test, theta_mn=theta_mn)
+    mn_df = calc_mn_learner_performance(x_train, y_train, x_val, y_val, x_test, y_test)
     df_list.append(mn_df)
     debug_print and logger.info('calc_mn_learner_performance in {:.3f} sec'.format(time.time() - t1))
 
     # Genie
     t1 = time.time()
-    theta_genies = []  # Fill this by the calc_empirical_pnml_performance func
-    genie_df = calc_genie_performance(x_train, y_train, x_val, y_val, x_test, y_test, theta_mn, theta_genies)
+    genie_df, theta_genies, var_genies = calc_genie_performance(x_train, y_train, x_val, y_val, x_test, y_test,
+                                                                theta_mn)
     df_list.append(genie_df)
-    theta_genies = theta_genies[0]
-    debug_print and logger.info('calc_genie_performance in {:.3f} sec'.format(time.time() - t1))
+    debug_print and logger.info('calc_genie_performance in {:.3f} sec. x_train.shape={}'.format(time.time() - t1,
+                                                                                                   x_train.shape))
 
     # Empirical pNML learner
     t1 = time.time()
     if is_eval_empirical_pnml is True:
-        pnml_df = calc_empirical_pnml_performance(x_train, y_train, x_val, y_val, x_test, y_test, theta_mn)
+        var_genies = var_genies if pnml_params_dict['is_use_adaptive_var'] is True else [var] * len(var_genies)
+        pnml_df = calc_empirical_pnml_performance(x_train, y_train, x_test, y_test, theta_genies, var_genies)
         df_list.append(pnml_df)
     debug_print and logger.info('calc_empirical_pnml_performance in {:.3f} sec'.format(time.time() - t1))
 
     # Analytical pNML learner
     t1 = time.time()
     if is_eval_analytical_pnml is True:
-        analytical_pnml_df = calc_analytical_pnml_performance(x_train, y_train, x_val, y_val, x_test, y_test,
-                                                              theta_genies, theta_mn)
+        analytical_pnml_df = calc_analytical_pnml_performance(x_train, y_train, x_test, y_test,
+                                                              theta_mn, theta_genies, var_genies)
         df_list.append(analytical_pnml_df)
     debug_print and logger.info('calc_analytical_pnml_performance in {:.3f} sec'.format(time.time() - t1))
 

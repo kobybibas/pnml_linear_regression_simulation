@@ -4,9 +4,7 @@ import math
 import numpy as np
 import pandas as pd
 
-from learner_utils.learner_helpers import estimate_variance_with_valset
-from learner_utils.pnml_utils import compute_pnml_logloss, calc_genie_performance
-from learner_utils.pnml_utils import fit_least_squares_estimator
+from learner_utils.pnml_utils import compute_pnml_logloss
 
 logger = logging.getLogger(__name__)
 
@@ -90,25 +88,15 @@ class AnalyticalPNML:
         return nf
 
 
-def calc_analytical_pnml_performance(x_train: np.ndarray, y_train: np.ndarray, x_val: np.ndarray, y_val: np.ndarray,
-                                     x_test: np.ndarray, y_test: np.ndarray, theta_genies: list = None,
-                                     theta_erm: np.ndarray = None) -> pd.DataFrame:
-    # Fit ERM
-    if theta_erm is None:
-        theta_erm = fit_least_squares_estimator(x_train, y_train, lamb=0.0)
-    var = estimate_variance_with_valset(x_val, y_val, theta_erm)
-
+def calc_analytical_pnml_performance(x_train: np.ndarray, y_train: np.ndarray, x_test: np.ndarray, y_test: np.ndarray,
+                                     theta_erm: np.ndarray, theta_genies: list, var_genies: list) -> pd.DataFrame:
     # Fit genie
     pnml_h = AnalyticalPNML(x_train, theta_erm)
-    if theta_genies is None:
-        theta_genies = []
-        _ = calc_genie_performance(x_train, y_train, x_val, y_val, x_test, y_test, theta_erm, theta_genies)
-        theta_genies = theta_genies[0]
 
     # pNML
-    norm_factors = np.array([pnml_h.calc_over_param_norm_factor(x.T, var) for x in x_test])
+    norm_factors = np.array([pnml_h.calc_over_param_norm_factor(x.T, var) for x, var in zip(x_test, var_genies)])
     res_dict_pnml = {
         'analytical_pnml_regret': np.log(norm_factors),
-        'analytical_pnml_test_logloss': compute_pnml_logloss(x_test, y_test, theta_genies, var, norm_factors)}
+        'analytical_pnml_test_logloss': compute_pnml_logloss(x_test, y_test, theta_genies, var_genies, norm_factors)}
     analytical_pnml_df = pd.DataFrame(res_dict_pnml)
     return analytical_pnml_df
