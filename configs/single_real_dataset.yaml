@@ -1,8 +1,9 @@
 data_dir: ../data               # directory to store the downloaded data in
-n_trails: 1                     # Number of repetition per experiment. Each with different random initialization
-num_trainset_sizes: 18          # Number of trainset sizes to eval
+n_trails: 3                     # Number of repetition per experiment. Each with different random initialization
+num_trainset_sizes: 30          # Number of trainset sizes to eval
 trainset_sizes: []
 seed: -1
+fast_dev_run: false
 
 # Preprocess param
 is_standardize_feature: true
@@ -15,7 +16,7 @@ is_eval_empirical_pnml: true
 is_eval_analytical_pnml: true
 
 pnml_params_dict: {
-    is_use_adaptive_var: true
+    var_type: "genie_valset" # genie_valset/genie_valset_no_train/adaptive_var/mn_var
 }
 
 # Machine params

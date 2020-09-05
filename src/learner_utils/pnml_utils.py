@@ -1,14 +1,13 @@
 import logging
-import os
 import time
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import scipy.optimize as optimize
 
 from learner_utils.learner_helpers import calc_best_var, calc_var_with_valset
 from learner_utils.learner_helpers import calc_logloss, calc_mse, calc_theta_norm, fit_least_squares_estimator
-from learner_utils.optimization_utils import fit_least_squares_with_max_norm_constrain
+from learner_utils.optimization_utils import fit_norm_constrained_least_squares
 
 logger = logging.getLogger(__name__)
 
@@ -27,16 +26,68 @@ def add_test_to_train(phi_train: np.ndarray, phi_test: np.ndarray) -> np.ndarray
     return phi_arr
 
 
-def compute_pnml_logloss(x_arr: np.ndarray, y_true: np.ndarray, theta_genies: np.ndarray, var_genies: list,
+def compute_pnml_logloss(x_arr: np.ndarray, y_true: np.ndarray, theta_genies: np.ndarray, genie_vars: list,
                          nfs: np.ndarray) -> float:
-    var_genies = np.array(var_genies)
+    genie_vars = np.array(genie_vars)
     y_hat = np.array([x @ theta_genie for x, theta_genie in zip(x_arr, theta_genies)]).squeeze()
-    prob = np.exp(-(y_hat - y_true) ** 2 / (2 * var_genies)) / np.sqrt(2 * np.pi * var_genies)
+    prob = np.exp(-(y_hat - y_true) ** 2 / (2 * genie_vars)) / np.sqrt(2 * np.pi * genie_vars)
 
     # Normalize by the pnml normalization factor
     prob /= nfs
     logloss = -np.log(prob + np.finfo('float').eps)
     return logloss
+
+
+def optimize_pnml_var(epsilon_square_true, epsilon_square_list, y_trained_list) -> np.ndarray:
+    # """
+    # Fit least squares estimator. Constrain it by the max norm constrain
+    # :param phi_arr: data matrix. Each row represents an example.
+    # :param y: label vector
+    # :param max_norm: the constraint of the fitted parameters.
+    # :return: fitted parameters that satisfy the max norm constrain
+    # """
+
+    # y_hat = np.array([theta_i.T @ phi_test for theta_i in theta_genie]).squeeze()
+    # y_trained.squeeze()
+    # epsilon_square = -(y_test - y_hat) ** 2
+    # epsilon_true_square =(y_test - theta_genie.T @ phi_test)**2
+    def calc_nf(sigma_fit):
+        var_fit = sigma_fit ** 2
+        # Genie probs
+        genies_probs = np.exp(-epsilon_square_list / (2 * var_fit)) / np.sqrt(2 * np.pi * var_fit)
+
+        # Normalization factor
+        nf = 2 * np.trapz(genies_probs, x=y_trained_list)
+        return nf
+
+    def calc_jac(sigma_fit):
+        var_fit = sigma_fit ** 2
+        nf = calc_nf(sigma_fit)
+
+        jac = (1 / (2 * nf * var_fit ** 2)) * (var_fit - nf * epsilon_square_true)
+        return jac
+
+    def calc_loss(sigma_fit):
+        var_fit = sigma_fit ** 2
+
+        # Genie probs
+        nf = calc_nf(sigma_fit)
+
+        loss = 0.5 * np.log(2 * np.pi * var_fit) + epsilon_square_true / (2 * var_fit) + np.log(nf)
+        return loss
+
+    # Optimize
+    sigma_0 = 0.001
+    res = optimize.minimize(calc_loss, sigma_0, jac=calc_jac)
+
+    # Verify output
+    sigma = res.x
+    var = float(sigma ** 2)
+
+    if bool(res.success) is False and \
+            not res.message == 'Desired error not necessarily achieved due to precision loss.':
+        logger.warning(res.message)
+    return var
 
 
 class Pnml:
@@ -60,7 +111,7 @@ class Pnml:
         self.lamb = lamb
 
         # ERM least squares parameters
-        self.theta_erm = None
+        self.theta_erm = fit_least_squares_estimator(self.phi_train, self.y_train, lamb=self.lamb)
 
     def fit_least_squares_estimator(self, phi_arr: np.ndarray, y: np.ndarray):
         return fit_least_squares_estimator(phi_arr, y, lamb=self.lamb)
@@ -95,19 +146,6 @@ class Pnml:
             self.theta_erm = self.fit_least_squares_estimator(self.phi_train, self.y_train)
         return float(self.theta_erm.T @ phi_test)
 
-    @staticmethod
-    def calc_genies_probs(y_trained: np.ndarray, y_hat: np.ndarray, variance: float) -> np.ndarray:
-        """
-        Calculate the genie probability of the label it was trained with
-        :param y_trained: The labels that the genie was trained with
-        :param y_hat: The predicted label by the trained genie
-        :param variance: the variance (sigma^2)
-        :return: the genie probability of the label it was trained with
-        """
-        genies_probs = (1 / np.sqrt(2 * np.pi * variance)) * np.exp(
-            -(y_trained.squeeze() - y_hat.squeeze()) ** 2 / (2 * variance))
-        return genies_probs
-
     def calc_norm_factor(self, phi_test: np.array, variance: float = None) -> float:
         """
         Calculate normalization factor using numerical integration
@@ -115,28 +153,49 @@ class Pnml:
         :param variance: genie's variance.
         :return: log normalization factor.
         """
-        if self.theta_erm is None:
-            self.theta_erm = self.fit_least_squares_estimator(self.phi_train, self.y_train)
+        self.reset_test_sample()
         if variance is None:
             variance = self.var
 
-        phi_arr = add_test_to_train(self.phi_train, phi_test)
-
-        # Predict around the ERM prediction
-        y_pred = self.theta_erm.T @ phi_test
-        y_vec = self.y_to_eval + y_pred
+        y_vec = self.create_y_vec_to_eval(phi_test)
+        thetas = self.calc_genie_thetas(phi_test, y_vec)
 
         # Calc genies predictions
-        thetas = [self.fit_least_squares_estimator(phi_arr, np.append(self.y_train, y)) for y in y_vec]
-        y_hats = np.array([theta.T @ phi_test for theta in thetas]).squeeze()
-        genies_probs = self.calc_genies_probs(y_vec, y_hats, variance)
+        genies_probs = self.calc_genies_probs(phi_test, y_vec, thetas, variance)
 
         # Integrate to find the pNML normalization factor
         norm_factor = np.trapz(genies_probs, x=y_vec)
-
-        # The genies predictors
-        self.genies_output = {'y_vec': y_vec, 'probs': genies_probs, 'epsilons': y_vec - y_hats}
         return norm_factor
+
+    def create_y_vec_to_eval(self, phi_test):
+        # Predict around the ERM prediction
+        y_pred = self.theta_erm.T @ phi_test
+        y_vec = self.y_to_eval + y_pred
+        self.genies_output['y_vec'] = y_vec
+        return y_vec
+
+    def calc_genie_thetas(self, phi_test, y_vec):
+        phi_arr = add_test_to_train(self.phi_train, phi_test)
+        thetas = [self.fit_least_squares_estimator(phi_arr, np.append(self.y_train, y)) for y in y_vec]
+        return thetas
+
+    def calc_genies_probs(self, phi_test, y_trained: np.ndarray, thetas: np.ndarray, variance: float) -> np.ndarray:
+        """
+        Calculate the genie probability of the label it was trained with
+        :param y_trained: The labels that the genie was trained with
+        :param thetas: The fitted parameters to the label (the trained genie)
+        :param variance: the variance (sigma^2)
+        :return: the genie probability of the label it was trained with
+        """
+        y_hat = np.array([theta.T @ phi_test for theta in thetas]).squeeze()
+        y_trained = y_trained.squeeze()
+        genies_probs = np.exp(-(y_trained - y_hat) ** 2 / (2 * variance)) / np.sqrt(2 * np.pi * variance)
+        self.genies_output['y_hat'] = y_hat
+        self.genies_output['probs'] = genies_probs
+        return genies_probs
+
+    def reset_test_sample(self):
+        self.genies_output = {}
 
 
 class PnmlMinNorm(Pnml):
@@ -148,8 +207,6 @@ class PnmlMinNorm(Pnml):
         self.constrain_factor = constrain_factor
 
         # Fitted least squares parameters with norm constraint
-        self.lamb = 0.0
-        self.theta_erm = fit_least_squares_estimator(self.phi_train, self.y_train)
         self.max_norm = self.constrain_factor * calc_theta_norm(self.theta_erm)
 
     def set_constrain_factor(self, constrain_factor: float):
@@ -158,82 +215,114 @@ class PnmlMinNorm(Pnml):
 
     def fit_least_squares_estimator(self, phi_arr: np.ndarray, y: np.ndarray) -> np.ndarray:
         max_norm = self.max_norm
-        theta = fit_least_squares_with_max_norm_constrain(phi_arr, y, max_norm)
+        theta = fit_norm_constrained_least_squares(phi_arr, y, max_norm)
         return theta
 
 
-def verify_empirical_pnml_results(pnml_h, norm_factor: float, x_train, j: int, y_to_eval,
-                                  is_plot_failed: bool = False) -> (bool, str):
+def verify_empirical_pnml_results(pnml_h, norm_factor: float, x_train, test_idx: int) -> (bool, str):
     is_failed = False
     message = ''
 
     # Some check for converges:
     if norm_factor < 1.0:
         # Expected positive regret
-        message += 'Negative regret={:.3f}. [x_train.shape idx]=[{} {}]'.format(np.log(norm_factor), x_train.shape, j)
+        message += 'Negative regret={:.3f}. [x_train.shape idx]=[{} {}]'.format(np.log(norm_factor), x_train.shape,
+                                                                                test_idx)
         is_failed = True
     if pnml_h.genies_output['probs'][-1] > np.finfo('float').eps:
         # Expected probability 0 at the edges
         message += 'Interval is too small prob={}. [x_train.shape idx]=[{} {}]'.format(
-            pnml_h.genies_output['probs'][-1], x_train.shape, j)
+            pnml_h.genies_output['probs'][-1], x_train.shape, test_idx)
         is_failed = True
-    if is_plot_failed is True and is_failed is True:
-        debug_dir = '../output/debug'
-        os.makedirs(debug_dir, exist_ok=True)
-        fig, axs = plt.subplots(2, 1)
-        axs[0].plot(y_to_eval, pnml_h.genies_output['probs'], '*')
-        axs[0].grid(True)
-
-        # plot positive part
-        idxs = np.where(y_to_eval > 0)[0]
-        axs[1].plot(y_to_eval[idxs], pnml_h.genies_output['probs'][idxs], '*')
-        axs[1].set_xscale('log')
-        axs[1].grid(True)
-        plt.title('norm_factor={:.5f}'.format(norm_factor))
-        fig.tight_layout()
-        out_path = f'{debug_dir}/{time.strftime("%Y%m%d_%H%M%S")}_debug_regret_{x_train.shape}_{j}.jpg'
-        fig.savefig(out_path)
-        plt.close(fig)
     return is_failed, message
 
 
-def calc_empirical_pnml_performance(x_train: np.ndarray, y_train: np.ndarray, x_test: np.ndarray, y_test: np.ndarray,
-                                    theta_genies: np.ndarray, genie_vars: list) -> pd.DataFrame:
+def execute_pnml_on_sample(pnml_h: Pnml, x_i, y_i, theta_genie_i, var_dict, i: int, total: int):
+    t0 = time.time()
+
+    # Calc normalization factor
+    pnml_h.reset_test_sample()
+    y_vec = pnml_h.create_y_vec_to_eval(x_i)
+    thetas = pnml_h.calc_genie_thetas(x_i, y_vec)
+
+    # Calc best sigma
+    epsilon_square_list = (y_vec - np.array([theta.T @ x_i for theta in thetas]).squeeze()) ** 2
+    epsilon_square_true = (y_i - theta_genie_i.T @ x_i) ** 2
+    var_best = optimize_pnml_var(epsilon_square_true, epsilon_square_list, y_vec)
+    var_dict['pnml_best_var'] = var_best
+
+    # Calc genies predictions
+    nf_dict = {}
+    for var_name, var in var_dict.items():
+        genies_probs = pnml_h.calc_genies_probs(x_i, y_vec, thetas, var)
+        nf = 2 * np.trapz(genies_probs, x=y_vec)
+
+        is_failed, message = verify_empirical_pnml_results(pnml_h, nf, pnml_h.phi_train, i)
+        msg  = '[{:03d}/{}] \t nf={:.8f}. \t {:.1f} sec. x_train.shape={} \t is_failed={}. {}={} {}'.format(
+            i, total - 1, nf, time.time() - t0, pnml_h.phi_train.shape, is_failed, var_name, var, message)
+        if is_failed is True:
+            logger.warning(msg)
+        else:
+            logger.info(msg)
+        nf_dict[var_name] = nf
+
+    return nf_dict
+
+
+def calc_empirical_pnml_performance(x_train: np.ndarray, y_train: np.ndarray,
+                                    x_val: np.ndarray, y_val: np.ndarray,
+                                    x_test: np.ndarray, y_test: np.ndarray,
+                                    theta_val_genies: np.ndarray, theta_test_genies: np.ndarray,
+                                    genie_var_dict: dict) -> pd.DataFrame:
     n_train, n_features = x_train.shape
 
     # Initialize pNML
-    var = np.mean(genie_vars)
-    if n_train > n_features:
-        pnml_h = Pnml(phi_train=x_train, y_train=y_train, lamb=0.0, var=var)
+    n_train_effective = n_train + 1  # We add the test sample data to training
+    if n_train_effective > n_features:
+        pnml_h = Pnml(phi_train=x_train, y_train=y_train, lamb=0.0, var=1e-3)
     else:
-        pnml_h = PnmlMinNorm(constrain_factor=1.0, phi_train=x_train, y_train=y_train, lamb=0.0, var=var)
+        pnml_h = PnmlMinNorm(constrain_factor=1.0, phi_train=x_train, y_train=y_train, lamb=0.0, var=1e-3)
 
     # Set interval
-    y_to_eval = np.append(0, np.logspace(-16, 3, 1000))  # One side interval
-    # y_to_eval = np.unique(np.concatenate((-y_to_eval, y_to_eval)))
+    y_to_eval = np.append(0, np.logspace(-16, 4, 1000))  # One side interval
     pnml_h.y_to_eval = y_to_eval
 
-    nfs = []
-    for j, (x_test_i, var_i) in enumerate(zip(x_test, genie_vars)):
-        t0 = time.time()
+    # Compute best variance using validation set
+    best_vars = []
+    for i, (x_i, y_i, theta_genie_i) in enumerate(zip(x_val, y_val, theta_val_genies)):
+        nf_dict_i = execute_pnml_on_sample(pnml_h, x_i, y_i, theta_genie_i, {}, i, len(y_test))
+        best_var = nf_dict_i['pnml_best_var']
+        best_vars.append(best_var)
+    genie_var_dict['empirical_pnml_valset_mean_var'] = [float(np.mean(best_vars))] * len(x_test)
+    genie_var_dict['empirical_pnml_valset_median_var'] = [float(np.median(best_vars))] * len(x_test)
 
-        # Calc normalization factor
-        nf = 2 * pnml_h.calc_norm_factor(x_test_i, var_i)  # Calculate one sided norm factor
-        nfs.append(nf)
+    # Execute on test set
+    nf_dict = {var_type: [] for var_type in genie_var_dict.keys()}
+    for i, (x_i, y_i, theta_genie_i) in enumerate(zip(x_test, y_test, theta_test_genies)):
+        var_dict = {var_name: var_values[i] for var_name, var_values in genie_var_dict.items()}
+        nf_dict_i = execute_pnml_on_sample(pnml_h, x_i, y_i, theta_genie_i, var_dict, i, len(y_test))
+        for nf_name, nf_value in nf_dict_i.items():
+            if nf_name not in nf_dict:
+                nf_dict[nf_name] = []
+            nf_dict[nf_name].append(nf_value)
 
-        is_failed, message = verify_empirical_pnml_results(pnml_h, nf, x_train, j, y_to_eval, is_plot_failed=True)
-        logger.warning('[{}/{}] \t nf={:.8f}. \t {:.1f} sec. x_train.shape={} \t is_failed={}. {}'.format(
-            j, len(y_test), nf, time.time() - t0, x_train.shape, is_failed, message))
+    res_dict = {}
+    for var_type in genie_var_dict.keys():
+        nfs = nf_dict[var_type]
+        regrets = np.log(nfs).tolist()
+        genie_vars = genie_var_dict[var_type]
+        logloss = compute_pnml_logloss(x_test, y_test, theta_test_genies, genie_vars, nfs)
 
-    regrets = np.log(nfs).tolist()
-    res_dict = {'empirical_pnml_regret': regrets,
-                'empirical_pnml_test_logloss': compute_pnml_logloss(x_test, y_test, theta_genies, genie_vars, nfs)}
+        # Add to dict
+        res_dict.update({f'empirical_pnml_{var_type}_regret': regrets,
+                         f'empirical_pnml_{var_type}_test_logloss': logloss,
+                         f'empirical_pnml_{var_type}_variance': genie_vars})
     df = pd.DataFrame(res_dict)
     return df
 
 
-def calc_testset_genies(x_train: np.ndarray, y_train: np.ndarray,
-                        x_test: np.ndarray, y_test: np.ndarray, theta_erm: np.ndarray) -> (list, list):
+def fit_genies_to_dataset(x_train: np.ndarray, y_train: np.ndarray, x_test: np.ndarray, y_test: np.ndarray,
+                          theta_erm: np.ndarray) -> (list, list):
     n_train, num_features = x_train.shape
 
     theta_genies, var_genies = [], []
@@ -243,16 +332,17 @@ def calc_testset_genies(x_train: np.ndarray, y_train: np.ndarray,
         phi_arr, y = add_test_to_train(x_train, x_test_i), np.append(y_train, y_test_i)
         assert phi_arr.shape[0] == len(y)
 
-        if n_train > num_features:
+        n_train_effective = n_train + 1  # We add the test sample data to training todo: check if fixed
+        if n_train_effective > num_features:
             # Fit under param region
             theta_genie_i = fit_least_squares_estimator(phi_arr, y, lamb=0.0)
         else:
             # Fit over param region
             constrain = calc_theta_norm(theta_erm)
-            theta_genie_i = fit_least_squares_with_max_norm_constrain(phi_arr, y, constrain)
+            theta_genie_i = fit_norm_constrained_least_squares(phi_arr, y, constrain)
 
         # Optimize genie variance
-        genie_var_i = calc_best_var(phi_arr, y, theta_genie_i)
+        genie_var_i = calc_best_var(x_test_i, y_test_i, theta_genie_i)
 
         theta_genies.append(theta_genie_i)
         var_genies.append(genie_var_i)
@@ -262,23 +352,32 @@ def calc_testset_genies(x_train: np.ndarray, y_train: np.ndarray,
 def calc_genie_performance(x_train: np.ndarray, y_train: np.ndarray,
                            x_val: np.ndarray, y_val: np.ndarray,
                            x_test: np.ndarray, y_test: np.ndarray,
-                           theta_erm: np.ndarray) -> (pd.DataFrame, list, list):
+                           theta_erm: np.ndarray) -> (pd.DataFrame, list, dict):
     theta_mn = fit_least_squares_estimator(x_train, y_train, lamb=0.0)
-    var = calc_var_with_valset(x_val, y_val, theta_mn)
-    theta_genies, var_genies = calc_testset_genies(x_train, y_train, x_test, y_test, theta_erm)
+
+    mn_var = calc_var_with_valset(x_val, y_val, theta_mn)
+    theta_test_genies, adaptive_var = fit_genies_to_dataset(x_train, y_train, x_test, y_test, theta_erm)
+    theta_val_genies, valset_var = fit_genies_to_dataset(x_train, y_train, x_val, y_val, theta_erm)
+
+    # Different vars to experiment
+    n_test = len(x_test)
+    var_dict = {'valset_mean_var': [np.mean(valset_var)] * n_test,
+                'adaptive_var_var': adaptive_var,
+                'mn_var_var': [mn_var] * n_test,
+                'valset_median_var': [np.median(valset_var)] * n_test}
 
     # Metric
-    test_logloss_adaptive_var = [float(calc_logloss(x, y, theta_i, var_i)) for x, y, theta_i, var_i in
-                                 zip(x_test, y_test, theta_genies, var_genies)]
-    test_logloss = [float(calc_logloss(x, y, theta_i, var)) for x, y, theta_i in zip(x_test, y_test, theta_genies)]
+    res_dict = {}
+    for var_name, var_values in var_dict.items():
+        test_logloss = [float(calc_logloss(x, y, theta_i, var_i)) for x, y, theta_i, var_i in
+                        zip(x_test, y_test, theta_test_genies, var_values)]
+        test_mse = [float(calc_mse(x, y, theta_i)) for x, y, theta_i in zip(x_test, y_test, theta_test_genies)]
+        theta_norm = [calc_theta_norm(theta_i) for theta_i in theta_test_genies]
 
-    test_mse = [float(calc_mse(x, y, theta_i)) for x, y, theta_i in zip(x_test, y_test, theta_genies)]
-    res_dict = {'genie_adaptive_var_test_logloss': test_logloss_adaptive_var,
-                'genie_test_logloss': test_logloss,
-                'genie_test_mse': test_mse,
-                'genie_theta_norm': [calc_theta_norm(theta_i) for theta_i in theta_genies],
-                'genie_adaptive_var_variance': var_genies,
-                'genie_variance': [var] * len(var_genies)}
+        res_dict.update({f'genie_{var_name}_test_mse': test_mse,
+                         f'genie_{var_name}_test_logloss': test_logloss,
+                         f'genie_{var_name}_theta_norm': theta_norm,
+                         f'genie_{var_name}_variance': var_values})
     df = pd.DataFrame(res_dict)
 
-    return df, theta_genies, var_genies
+    return df, theta_test_genies, theta_val_genies, var_dict

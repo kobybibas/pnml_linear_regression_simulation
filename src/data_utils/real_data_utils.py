@@ -95,7 +95,7 @@ def execute_trail(x_all: np.ndarray, y_all: np.ndarray, trail_num: int, trainset
                   is_eval_mdl: bool, is_eval_empirical_pnml: bool, is_eval_analytical_pnml: bool,
                   is_standardize_feature: bool, is_standardize_samples: bool, is_add_bias_term: bool,
                   pnml_params_dict: dict,
-                  debug_print: bool = True):
+                  debug_print: bool = True, fast_dev_run: bool = False):
     t0 = time.time()
 
     # Execute trails
@@ -108,6 +108,11 @@ def execute_trail(x_all: np.ndarray, y_all: np.ndarray, trail_num: int, trainset
                                                                    is_standardize_samples=is_standardize_samples,
                                                                    is_add_bias_term=is_add_bias_term)
     x_train, y_train = x_train[:trainset_size, :], y_train[:trainset_size]
+    if fast_dev_run is True:
+        x_train, y_train = x_train[:2, :], y_train[:2]
+        x_val, y_val = x_val[:2, :], y_val[:2]
+        x_test, y_test = x_test[:3, :], y_test[:3]
+
     debug_print and logger.info('split_dataset in {:.3f} sec'.format(time.time() - t1))
 
     # General statistics
@@ -132,25 +137,28 @@ def execute_trail(x_all: np.ndarray, y_all: np.ndarray, trail_num: int, trainset
 
     # Genie
     t1 = time.time()
-    genie_df, theta_genies, var_genies = calc_genie_performance(x_train, y_train, x_val, y_val, x_test, y_test,
-                                                                theta_mn)
+    genie_df, theta_test_genies, theta_val_genies, genie_var_dict = calc_genie_performance(x_train, y_train,
+                                                                                           x_val, y_val,
+                                                                                           x_test, y_test,
+                                                                                           theta_mn)
     df_list.append(genie_df)
     debug_print and logger.info('calc_genie_performance in {:.3f} sec. x_train.shape={}'.format(time.time() - t1,
-                                                                                                   x_train.shape))
+                                                                                                x_train.shape))
 
     # Empirical pNML learner
     t1 = time.time()
     if is_eval_empirical_pnml is True:
-        var_genies = var_genies if pnml_params_dict['is_use_adaptive_var'] is True else [var] * len(var_genies)
-        pnml_df = calc_empirical_pnml_performance(x_train, y_train, x_test, y_test, theta_genies, var_genies)
+        pnml_df = calc_empirical_pnml_performance(x_train, y_train, x_val, y_val, x_test, y_test,
+                                                  theta_val_genies, theta_test_genies, genie_var_dict)
         df_list.append(pnml_df)
     debug_print and logger.info('calc_empirical_pnml_performance in {:.3f} sec'.format(time.time() - t1))
 
     # Analytical pNML learner
     t1 = time.time()
     if is_eval_analytical_pnml is True:
+        var_genies = [var] * len(x_test)
         analytical_pnml_df = calc_analytical_pnml_performance(x_train, y_train, x_test, y_test,
-                                                              theta_mn, theta_genies, var_genies)
+                                                              theta_mn, theta_test_genies, var_genies)
         df_list.append(analytical_pnml_df)
     debug_print and logger.info('calc_analytical_pnml_performance in {:.3f} sec'.format(time.time() - t1))
 

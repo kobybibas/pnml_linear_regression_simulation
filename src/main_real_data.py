@@ -40,7 +40,8 @@ def submit_dataset_experiment_jobs(dataset_name: str, cfg) -> pd.DataFrame:
                                             is_standardize_feature=cfg.is_standardize_feature,
                                             is_standardize_samples=cfg.is_standardize_samples,
                                             is_add_bias_term=cfg.is_add_bias_term,
-                                            pnml_params_dict=cfg.pnml_params_dict)
+                                            pnml_params_dict=cfg.pnml_params_dict,
+                                            fast_dev_run=cfg.fast_dev_run)
             task_list.append(ray_task)
     return task_list
 
