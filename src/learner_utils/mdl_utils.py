@@ -5,9 +5,7 @@ import numpy.linalg as npl
 import pandas as pd
 import scipy.optimize
 
-from learner_utils.learner_helpers import calc_best_var
-from learner_utils.learner_helpers import calc_mse, calc_logloss, calc_var_with_valset, calc_theta_norm
-from learner_utils.pnml_utils import add_test_to_train
+from learner_utils.learner_helpers import calc_mse, calc_logloss, calc_theta_norm, calc_best_var
 
 logger = logging.getLogger(__name__)
 
@@ -51,27 +49,14 @@ def calc_mdl_performance(x_train: np.ndarray, y_train: np.ndarray, x_val: np.nda
         mdl_dict = compute_practical_mdl_comp(x_train, y_train, variance=var)
     theta_mdl = mdl_dict['theta_hat']
     lambda_opt = mdl_dict['lambda_opt']
-    var = calc_var_with_valset(x_val, y_val, theta_mdl)
-
-    # Optimize for best variance
-    test_logloss_adaptive_var, var_list = [], []
-    for x_test_i, y_test_i, in zip(x_test, y_test):
-        phi_arr, y = add_test_to_train(x_train, x_test_i), np.append(y_train, y_test_i)
-        var_i = calc_best_var(phi_arr, y, theta_mdl)
-
-        # Save
-        var_list.append(var_i)
-        test_logloss_adaptive_var.append(float(calc_logloss(x_test_i, y_test_i, theta_mdl, var_i)))
+    var = calc_best_var(x_val, y_val, theta_mdl)
 
     n_test = len(x_test)
     res_dict = {'mdl_lambda_opt': [lambda_opt] * n_test,
                 'mdl_test_mse': calc_mse(x_test, y_test, theta_mdl),
                 'mdl_theta_norm': [calc_theta_norm(theta_mdl)] * n_test,
                 'mdl_test_logloss': calc_logloss(x_test, y_test, theta_mdl, var),
-                'mdl_variance': [var] * n_test,
-                'mdl_adaptive_var_test_logloss': test_logloss_adaptive_var,
-                'mdl_adaptive_var_variance': var_list
-                }
+                'mdl_variance': [var] * n_test}
 
     df = pd.DataFrame(res_dict)
     return df

@@ -10,38 +10,90 @@ import psutil
 import ray
 
 from data_utils.real_data_utils import create_trainset_sizes_to_eval, execute_trail
-from data_utils.real_data_utils import download_regression_datasets, get_data
+from data_utils.real_data_utils import download_regression_datasets, get_pmlb_data, random_split_dataset
 
 logger = logging.getLogger(__name__)
 
 
+def get_uci_data(dataset_name: str, data_dir: str, train_test_split_num: int):
+    data_txt_path = osp.join(data_dir, dataset_name, 'data', 'data.txt')
+    data = np.loadtxt(data_txt_path)
+
+    index_features_path = osp.join(data_dir, dataset_name, 'data', 'index_features.txt')
+    index_features = np.loadtxt(index_features_path)
+
+    index_target_path = osp.join(data_dir, dataset_name, 'data', 'index_target.txt')
+    index_target = np.loadtxt(index_target_path)
+
+    x_all = data[:, [int(i) for i in index_features.tolist()]]
+    y_all = data[:, int(index_target.tolist())]
+
+    # Add bias term
+    x_all = np.hstack((x_all, np.ones((x_all.shape[0], 1))))
+
+    # Load split file
+    index_train_path = osp.join(data_dir, dataset_name, 'data', f'index_train_{train_test_split_num}.txt')
+    index_train = np.loadtxt(index_train_path).astype(int)
+    index_test_path = osp.join(data_dir, dataset_name, 'data', f'index_test_{train_test_split_num}.txt')
+    index_test = np.loadtxt(index_test_path).astype(int)
+
+    # Train-test split
+    x_train, y_train = x_all[index_train], y_all[index_train]
+    x_test, y_test = x_all[index_test], y_all[index_test]
+
+    # Train-val split
+    num_training_examples = int(0.9 * x_train.shape[0])
+    x_val, y_val = x_train[num_training_examples:, :], y_train[num_training_examples:]
+    x_train, y_train = x_train[:num_training_examples, :], y_train[:num_training_examples]
+
+    return x_train, y_train, x_val, y_val, x_test, y_test
+
+
 def submit_dataset_experiment_jobs(dataset_name: str, cfg) -> pd.DataFrame:
-    # Get dataset statistic
-    train_ratio, val_ratio, test_ratio = 0.6, 0.2, 0.2
-    x_all, y_all = get_data(dataset_name, cfg.data_dir)
-    n_train, n_features = int(train_ratio * x_all.shape[0]), x_all.shape[1]
+    if 'train_test_split_num' in cfg:
+        iterator = cfg.train_test_split_num
+    else:
+        iterator = range(cfg.n_trails)
 
-    # Define train set to evaluate
-    trainset_sizes = create_trainset_sizes_to_eval(cfg.trainset_sizes, n_train, n_features, cfg.num_trainset_sizes)
-    logger.info('{}: [n_data, n_features]=[{} {}]'.format(dataset_name, x_all.shape[0], n_features))
-    logger.info(trainset_sizes)
-
-    # Pass the same large object into a number of tasks.
-    x_all_id = ray.put(x_all)
-
-    # Submit tasks
     task_list = []
-    for i, trainset_size in enumerate(trainset_sizes):
-        for trail_num in range(cfg.n_trails):
-            ray_task = execute_trail.remote(x_all_id, y_all, trail_num, trainset_size, dataset_name,
+    for trail_num in iterator:
+        # Get dataset statistic
+        if 'UCI_Datasets' in dataset_name:
+            x_train, y_train, x_val, y_val, x_test, y_test = get_uci_data(dataset_name, cfg.data_dir,
+                                                                          cfg.train_test_split_num[trail_num])
+        else:
+            x_all, y_all = get_pmlb_data(dataset_name, cfg.data_dir)
+            # Randomly split dataset
+            x_train, y_train, x_val, y_val, x_test, y_test = random_split_dataset(x_all, y_all,
+                                                                                  is_standardize_feature=cfg.is_standardize_feature,
+                                                                                  is_standardize_samples=cfg.is_standardize_samples,
+                                                                                  is_add_bias_term=cfg.is_add_bias_term)
+
+        # Define train set to evaluate
+        n_train, n_features = x_train.shape
+        trainset_sizes = create_trainset_sizes_to_eval(cfg.trainset_sizes, n_train, n_features, cfg.num_trainset_sizes)
+        logger.info('{} trail_num={}: [n_features n_train n_val n_test]=[{} {} {} {}]'.format(
+            dataset_name, trail_num, n_features, n_train, len(x_val), len(x_test)))
+        logger.info(trainset_sizes)
+
+        # Submit tasks
+        for i, trainset_size in enumerate(trainset_sizes):
+
+            # Reduce training set size
+            x_train_reduced, y_train_reduced = x_train[:trainset_size, :], y_train[:trainset_size]
+            if cfg.fast_dev_run is True:
+                x_train, y_train = x_train[:3, :], y_train[:3]
+                x_val, y_val = x_val[:2, :], y_val[:2]
+                x_test, y_test = x_test[:2, :], y_test[:2]
+
+            # Execute trail
+            ray_task = execute_trail.remote(np.copy(x_train_reduced), np.copy(y_train_reduced),
+                                            np.copy(x_val), np.copy(y_val),
+                                            np.copy(x_test), np.copy(y_test),
+                                            trail_num, trainset_size, dataset_name,
                                             is_eval_mdl=cfg.is_eval_mdl,
                                             is_eval_empirical_pnml=cfg.is_eval_empirical_pnml,
-                                            is_eval_analytical_pnml=cfg.is_eval_analytical_pnml,
-                                            is_standardize_feature=cfg.is_standardize_feature,
-                                            is_standardize_samples=cfg.is_standardize_samples,
-                                            is_add_bias_term=cfg.is_add_bias_term,
-                                            pnml_params_dict=cfg.pnml_params_dict,
-                                            fast_dev_run=cfg.fast_dev_run)
+                                            is_eval_analytical_pnml=cfg.is_eval_analytical_pnml)
             task_list.append(ray_task)
     return task_list
 

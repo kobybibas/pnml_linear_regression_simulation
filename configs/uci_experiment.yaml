@@ -1,6 +1,6 @@
 data_dir: ../data               # directory to store the downloaded data in
-n_trails: 3                     # Number of repetition per experiment. Each with different random initialization
-num_trainset_sizes: 30          # Number of trainset sizes to eval
+n_trails: 1                     # Number of repetition per experiment. Each with different random initialization
+num_trainset_sizes: 20          # Number of trainset sizes to eval
 trainset_sizes: []
 seed: -1
 fast_dev_run: false
@@ -9,18 +9,12 @@ fast_dev_run: false
 is_standardize_feature: true
 is_standardize_samples: false
 is_add_bias_term: true
-trainset_ratio: 0.6
-valset_ratio: 0.2
-testset_ratio: 0.2
 
 # Learner params
 is_eval_mdl: true
 is_eval_empirical_pnml: true
 is_eval_analytical_pnml: true
 
-pnml_params_dict: {
-    var_type: "genie_valset" # genie_valset/genie_valset_no_train/adaptive_var/mn_var
-}
 
 # Machine params
 is_local_mode: false            # Whether to use ray debug mode: using only 1 cpu.
@@ -29,12 +23,22 @@ is_datasets_statistics: false   # Whether to download all regression datasets.
 
 # Datasets to analyze
 dataset_names:
-  - "645_fri_c3_500_50"
+  - "UCI_Datasets/bostonHousing/"
+  - "UCI_Datasets/concrete/"
+  - "UCI_Datasets/energy/"
+  - "UCI_Datasets/kin8nm/"
+  - "UCI_Datasets/naval-propulsion-plant/"
+  - "UCI_Datasets/power-plant/"
+#  - "UCI_Datasets/protein-tertiary-structure/"
+  - "UCI_Datasets/wine-quality-red/"
+  - "UCI_Datasets/yacht/"
+
+train_test_split_num: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 ,18 ,19]
 
 hydra:
   run:
     # Output directory
-    dir: ../output/real_data_${now:%Y%m%d_%H%m%S}
+    dir: ../output/uci_experiment_${now:%Y%m%d_%H%m%S}
   sweep:
     dir: ../output/
-    subdir: real_data_${now:%Y%m%d_%H%m%S}_${hydra.job.num}
+    subdir: uci_experiment_${now:%Y%m%d_%H%m%S}_${hydra.job.num}

@@ -1,7 +1,6 @@
 import logging
 
 import numpy as np
-import numpy.linalg as npl
 import scipy.optimize as optimize
 
 from learner_utils.learner_helpers import calc_theta_norm, fit_least_squares_estimator, calc_mse
@@ -24,8 +23,6 @@ def choose_initial_guess(phi_arr, y, max_norm):
             break
 
     return lamb_chosen
-
-
 
 
 def execute_binary_lamb_search(phi_arr: np.ndarray, y: np.ndarray, max_norm: float, start: float = 0.0,
@@ -93,6 +90,13 @@ def execute_binary_lamb_search(phi_arr: np.ndarray, y: np.ndarray, max_norm: flo
         res_dict['iter'] = i
         i += 1
 
+    if norm_end > max_norm:
+        res_dict['message'] = 'norm is greater than max norm.'
+        res_dict['success'] = False
+    if np.abs(max_norm - norm_end) > 1e-1:
+        res_dict['message'] = 'norm is far from the max norm'
+        res_dict['success'] = False
+
     return end, res_dict
 
 
@@ -122,7 +126,7 @@ def fit_norm_constrained_least_squares(phi_arr: np.ndarray, y: np.ndarray, max_n
     norm = calc_theta_norm(theta_fit)
     mse = np.mean(calc_mse(phi_arr, y, theta_fit))
 
-    if res_dict['success'] is False or not norm < max_norm + tol_func or not np.abs(max_norm - norm) < 1e-1:
+    if res_dict['success'] is False:
         iter_num, start, end = res_dict['iter'], res_dict['start'][-1], res_dict['end'][-1]
         norm_start, norm_end, max_norm = res_dict['norm_start'][-1], res_dict['norm_end'][-1], res_dict['max_norm']
         logger.warning('Optimization failed')
@@ -131,5 +135,49 @@ def fit_norm_constrained_least_squares(phi_arr: np.ndarray, y: np.ndarray, max_n
         logger.warning('    ' + f'[norm_start norm_end max_norm]=[{norm_start} {norm_end} {max_norm}]')
         logger.warning('    ' + f'max_norm-[norm_start norm_end]=[{max_norm-norm_start} {max_norm-norm_end}]')
         logger.warning('    ' + f'lamb [start end]=[{start} {end}]')
-        logger.warning('    ' + f'[norm max_norm diff]=[{norm} {max_norm} {norm- max_norm}]]. mse={mse}.')
+        logger.warning('    ' + f'[norm max_norm diff]=[{norm} {max_norm} {norm- max_norm}]. mse={mse}.')
     return theta_fit
+
+
+def optimize_pnml_var(epsilon_square_gt: float, epsilon_square_list: list, y_trained_list: list) -> np.ndarray:
+    epsilon_square_list = np.array(epsilon_square_list)
+    y_trained_list = np.array(y_trained_list)
+
+    def calc_nf(sigma_fit):
+        var_fit = sigma_fit ** 2
+
+        # Genie probs
+        genies_probs = np.exp(-epsilon_square_list / (2 * var_fit)) / np.sqrt(2 * np.pi * var_fit)
+
+        # Normalization factor
+        nf = 2 * np.trapz(genies_probs, x=y_trained_list)
+        return nf
+
+    def calc_jac(sigma_fit):
+        var_fit = sigma_fit ** 2
+        nf = calc_nf(sigma_fit)
+
+        jac = (1 / (2 * nf * var_fit ** 2)) * (var_fit - nf * epsilon_square_gt)
+        return jac
+
+    def calc_loss(sigma_fit):
+        var_fit = sigma_fit ** 2
+
+        # Genie probs
+        nf = calc_nf(sigma_fit)
+
+        loss = 0.5 * np.log(2 * np.pi * var_fit) + epsilon_square_gt / (2 * var_fit) + np.log(nf)
+        return loss
+
+    # Optimize
+    sigma_0 = 0.001
+    res = optimize.minimize(calc_loss, sigma_0, jac=calc_jac)
+
+    # Verify output
+    sigma = res.x
+    var = float(sigma ** 2)
+
+    if bool(res.success) is False and \
+            not res.message == 'Desired error not necessarily achieved due to precision loss.':
+        logger.warning(res.message)
+    return var

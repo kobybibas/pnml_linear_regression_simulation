@@ -11,9 +11,8 @@ from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
 
 from learner_utils.analytical_pnml_utils import calc_analytical_pnml_performance
-from learner_utils.learner_helpers import calc_var_with_valset
 from learner_utils.mdl_utils import calc_mdl_performance
-from learner_utils.minimum_norm_utils import calc_mn_learner_performance, calc_theta_mn
+from learner_utils.minimum_norm_utils import calc_mn_learner_performance
 from learner_utils.pnml_utils import calc_empirical_pnml_performance, calc_genie_performance
 
 logger = logging.getLogger(__name__)
@@ -29,7 +28,7 @@ def create_trainset_sizes_to_eval(trainset_sizes: list, n_train: int, n_features
     """
     if len(trainset_sizes) == 0:
         trainset_sizes = np.logspace(np.log10(2), np.log10(n_train), num_trainset_sizes).astype(int)
-        trainset_sizes = np.append(trainset_sizes, n_features)
+        trainset_sizes = np.append(trainset_sizes, [n_features, n_features - 1, n_features + 1])
         trainset_sizes = np.unique(trainset_sizes)
     return trainset_sizes
 
@@ -63,18 +62,20 @@ def standardize_feature(x_train: np.ndarray, x_val: np.ndarray, x_test: np.ndarr
     return x_train_stand, x_val_stand, x_test_stand
 
 
-def get_data(dataset_name: str, data_dir: str = None):
+def get_pmlb_data(dataset_name: str, data_dir: str):
     x_all, y_all = pmlb.fetch_data(dataset_name, return_X_y=True, local_cache_dir=data_dir)
     return x_all, y_all
 
 
-def split_dataset(x_all, y_all, is_standardize_feature: bool = False, is_standardize_samples: bool = True,
-                  is_add_bias_term: bool = True):
+def random_split_dataset(x_all, y_all,
+                         is_standardize_feature: bool = False,
+                         is_standardize_samples: bool = True,
+                         is_add_bias_term: bool = True):
     if is_standardize_samples is True:
         # Normalize the data. To match mdl-comp preprocess
         x_all, y_all = standardize_samples(x_all, y_all)
 
-    # Split: train val test = [0.6, 0.2 ,0.2]
+    # Split: train val test = [0.6, 0.2 ,0.2] # todo:as an input
     x_train, x_test, y_train, y_test = train_test_split(x_all, y_all, test_size=0.2, shuffle=True)
     x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.25, shuffle=True)
 
@@ -91,29 +92,18 @@ def split_dataset(x_all, y_all, is_standardize_feature: bool = False, is_standar
 
 
 @ray.remote
-def execute_trail(x_all: np.ndarray, y_all: np.ndarray, trail_num: int, trainset_size: int, dataset_name: str,
+def execute_trail(x_train: np.ndarray, y_train: np.ndarray,
+                  x_val: np.ndarray, y_val: np.ndarray,
+                  x_test: np.ndarray, y_test: np.ndarray,
+                  # Trail meta data
+                  trail_num: int, trainset_size: int, dataset_name: str,
+                  # Learners param
                   is_eval_mdl: bool, is_eval_empirical_pnml: bool, is_eval_analytical_pnml: bool,
-                  is_standardize_feature: bool, is_standardize_samples: bool, is_add_bias_term: bool,
-                  pnml_params_dict: dict,
-                  debug_print: bool = True, fast_dev_run: bool = False):
+                  debug_print: bool = True):
     t0 = time.time()
 
-    # Execute trails
+    # Initialize output
     df_list = []
-
-    # Split dataset
-    t1 = time.time()
-    x_train, y_train, x_val, y_val, x_test, y_test = split_dataset(x_all, y_all,
-                                                                   is_standardize_feature=is_standardize_feature,
-                                                                   is_standardize_samples=is_standardize_samples,
-                                                                   is_add_bias_term=is_add_bias_term)
-    x_train, y_train = x_train[:trainset_size, :], y_train[:trainset_size]
-    if fast_dev_run is True:
-        x_train, y_train = x_train[:2, :], y_train[:2]
-        x_val, y_val = x_val[:2, :], y_val[:2]
-        x_test, y_test = x_test[:3, :], y_test[:3]
-
-    debug_print and logger.info('split_dataset in {:.3f} sec'.format(time.time() - t1))
 
     # General statistics
     n_test = len(x_test)
@@ -125,17 +115,13 @@ def execute_trail(x_all: np.ndarray, y_all: np.ndarray, trail_num: int, trainset
                              'num_features': [x_train.shape[1]] * n_test})
     df_list.append(param_df)
 
-    # Compute variance
-    theta_mn = calc_theta_mn(x_train, y_train)
-    var = calc_var_with_valset(x_val, y_val, theta_mn)
-
     # Minimum norm learner
     t1 = time.time()
-    mn_df = calc_mn_learner_performance(x_train, y_train, x_val, y_val, x_test, y_test)
+    mn_df, theta_mn, mn_valset_var = calc_mn_learner_performance(x_train, y_train, x_val, y_val, x_test, y_test)
     df_list.append(mn_df)
     debug_print and logger.info('calc_mn_learner_performance in {:.3f} sec'.format(time.time() - t1))
 
-    # Genie
+    # Genie learner
     t1 = time.time()
     genie_df, theta_test_genies, theta_val_genies, genie_var_dict = calc_genie_performance(x_train, y_train,
                                                                                            x_val, y_val,
@@ -156,16 +142,19 @@ def execute_trail(x_all: np.ndarray, y_all: np.ndarray, trail_num: int, trainset
     # Analytical pNML learner
     t1 = time.time()
     if is_eval_analytical_pnml is True:
-        var_genies = [var] * len(x_test)
+        if 'pnml_valset_mean_var' in genie_var_dict:
+            analytical_pnml_var = genie_var_dict['pnml_valset_mean_var']
+        else:
+            analytical_pnml_var = [mn_valset_var] * len(x_test)
         analytical_pnml_df = calc_analytical_pnml_performance(x_train, y_train, x_test, y_test,
-                                                              theta_mn, theta_test_genies, var_genies)
+                                                              theta_mn, theta_test_genies, analytical_pnml_var)
         df_list.append(analytical_pnml_df)
     debug_print and logger.info('calc_analytical_pnml_performance in {:.3f} sec'.format(time.time() - t1))
 
     # MDL
     t1 = time.time()
     if is_eval_mdl is True:
-        mdl_df = calc_mdl_performance(x_train, y_train, x_val, y_val, x_test, y_test, var)
+        mdl_df = calc_mdl_performance(x_train, y_train, x_val, y_val, x_test, y_test, mn_valset_var)
         df_list.append(mdl_df)
     debug_print and logger.info('calc_mdl_performance in {:.3f} sec'.format(time.time() - t1))
 

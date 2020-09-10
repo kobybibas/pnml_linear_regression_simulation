@@ -25,7 +25,7 @@ def execute_experiment(cfg):
 
     # Build pNML
     if cfg.pnml_type == 'pnml':
-        pnml_h = Pnml(phi_train, y_train, lamb=cfg.lamb, var=cfg.min_sigma_square)
+        pnml_h = Pnml(phi_train, y_train, lamb=cfg.lamb)
     elif cfg.pnml_type == 'pnml_min_norm':
         pnml_h = PnmlMinNorm(cfg.constrain_factor, phi_train, y_train, lamb=0.0, min_sigma_square=cfg.min_sigma_square)
     else:

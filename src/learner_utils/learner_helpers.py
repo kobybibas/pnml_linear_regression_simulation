@@ -39,7 +39,7 @@ def calc_logloss(x_arr: np.ndarray, y_true: np.ndarray, theta: np.ndarray, var: 
 
 def calc_var_with_valset(x_val: np.ndarray, y_val: np.ndarray, theta: np.ndarray) -> float:
     y_hat = x_val @ theta
-    return np.var(y_hat - y_val)
+    return float(np.var(y_hat - y_val))
 
 
 def calc_best_var(phi_arr: np.ndarray, y: np.ndarray, theta: np.ndarray) -> float:
