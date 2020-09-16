@@ -52,6 +52,18 @@ The parameters for the code are located in configs directory
 └── src
 ```
 
+
+```bash
+python main_real_data.py --config-name ../configs/uci_experiment.yaml  dataset_name=bostonHousing ; \
+python main_real_data.py --config-name ../configs/uci_experiment.yaml  dataset_name=concrete; \
+python main_real_data.py --config-name ../configs/uci_experiment.yaml  dataset_name=energy; \
+python main_real_data.py --config-name ../configs/uci_experiment.yaml  dataset_name=kin8nm; \
+python main_real_data.py --config-name ../configs/uci_experiment.yaml  dataset_name=naval-propulsion-plant; \
+python main_real_data.py --config-name ../configs/uci_experiment.yaml  dataset_name=wine-quality-red;
+
+```
+
+
 ### Citing
 ```
 @inproceedings{bibas2019new,

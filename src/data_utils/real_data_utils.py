@@ -4,48 +4,34 @@ import time
 
 import numpy as np
 import pandas as pd
-import pmlb
 import ray
-from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from tqdm import tqdm
 
 from learner_utils.analytical_pnml_utils import calc_analytical_pnml_performance
 from learner_utils.mdl_utils import calc_mdl_performance
 from learner_utils.minimum_norm_utils import calc_mn_learner_performance
-from learner_utils.pnml_utils import calc_empirical_pnml_performance, calc_genie_performance
-
-logger = logging.getLogger(__name__)
+from learner_utils.pnml_real_data_helper import calc_empirical_pnml_performance, calc_genie_performance
 
 
-def create_trainset_sizes_to_eval(trainset_sizes: list, n_train: int, n_features: int, num_trainset_sizes: int) -> list:
+def create_trainset_sizes_to_eval(trainset_sizes: list, n_train: int, n_features: int) -> list:
     """
-    Create list of training set sizes to evaluate.
+    Create list of training set sizes to evaluate if was not predefined in the cfg file.
+    :param trainset_sizes: Predefined training set sizes.
     :param n_train: Training set size.
     :param n_features:  Number of feature
-    :param num_trainset_sizes: How much training set sizes to evaluate.
     :return: list of training set sizes.
     """
     if len(trainset_sizes) == 0:
-        trainset_sizes = np.logspace(np.log10(2), np.log10(n_train), num_trainset_sizes).astype(int)
-        trainset_sizes = np.append(trainset_sizes, [n_features, n_features - 1, n_features + 1])
+        trainset_sizes_over_param = np.arange(4, n_features + 1).astype(int)
+        trainset_sizes_under_param = np.logspace(np.log10(n_features + 1), np.log10(n_train), 10).astype(int)
+        trainset_sizes = np.append(trainset_sizes_over_param, trainset_sizes_under_param)
         trainset_sizes = np.unique(trainset_sizes)
     return trainset_sizes
 
 
-def standardize_samples(x_arr: np.ndarray, y: np.ndarray):
-    # Normalize the data. To match mdl-comp preprocess
-    x_mean, x_std = np.mean(x_arr, axis=1).reshape(-1, 1), np.std(x_arr, axis=1).reshape(-1, 1)
-    x_std[x_std < 1e-12] = 1
-    x_stand = x_arr - x_mean
-    x_stand = x_stand / x_std
-    y_stand = (y - np.mean(y)) / np.std(y)
-    return x_stand, y_stand
-
-
-def standardize_feature(x_train: np.ndarray, x_val: np.ndarray, x_test: np.ndarray) -> (np.ndarray,
-                                                                                        np.ndarray,
-                                                                                        np.ndarray):
+def standardize_features(x_train: np.ndarray, x_val: np.ndarray, x_test: np.ndarray) -> (np.ndarray,
+                                                                                         np.ndarray,
+                                                                                         np.ndarray):
     x_train_stand = x_train.copy()
     x_val_stand = x_val.copy()
     x_test_stand = x_test.copy()
@@ -62,26 +48,42 @@ def standardize_feature(x_train: np.ndarray, x_val: np.ndarray, x_test: np.ndarr
     return x_train_stand, x_val_stand, x_test_stand
 
 
-def get_pmlb_data(dataset_name: str, data_dir: str):
-    x_all, y_all = pmlb.fetch_data(dataset_name, return_X_y=True, local_cache_dir=data_dir)
-    return x_all, y_all
+def get_uci_data(dataset_name: str, data_dir: str, train_test_split_num: int,
+                 is_standardize_features: bool = True, is_add_bias_term: bool = True):
+    data_txt_path = osp.join(data_dir, dataset_name, 'data', 'data.txt')
+    data = np.loadtxt(data_txt_path)
 
+    index_features_path = osp.join(data_dir, dataset_name, 'data', 'index_features.txt')
+    index_features = np.loadtxt(index_features_path)
 
-def random_split_dataset(x_all, y_all,
-                         is_standardize_feature: bool = False,
-                         is_standardize_samples: bool = True,
-                         is_add_bias_term: bool = True):
-    if is_standardize_samples is True:
-        # Normalize the data. To match mdl-comp preprocess
-        x_all, y_all = standardize_samples(x_all, y_all)
+    index_target_path = osp.join(data_dir, dataset_name, 'data', 'index_target.txt')
+    index_target = np.loadtxt(index_target_path)
 
-    # Split: train val test = [0.6, 0.2 ,0.2] # todo:as an input
-    x_train, x_test, y_train, y_test = train_test_split(x_all, y_all, test_size=0.2, shuffle=True)
-    x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.25, shuffle=True)
+    x_all = data[:, [int(i) for i in index_features.tolist()]]
+    y_all = data[:, int(index_target.tolist())]
 
-    if is_standardize_feature is True:
-        # apply standardization on numerical features
-        x_train, x_val, x_test = standardize_feature(x_train, x_val, x_test)
+    # Load split file
+    index_train_path = osp.join(data_dir, dataset_name, 'data', f'index_train_{train_test_split_num}.txt')
+    index_train = np.loadtxt(index_train_path).astype(int)
+    index_test_path = osp.join(data_dir, dataset_name, 'data', f'index_test_{train_test_split_num}.txt')
+    index_test = np.loadtxt(index_test_path).astype(int)
+
+    # Train-test split
+    x_train, y_train = x_all[index_train], y_all[index_train]
+    x_test, y_test = x_all[index_test], y_all[index_test]
+
+    # Train-val split
+    num_training_examples = int(0.9 * x_train.shape[0])
+    x_val, y_val = x_train[num_training_examples:, :], y_train[num_training_examples:]
+    x_train, y_train = x_train[:num_training_examples, :], y_train[:num_training_examples]
+
+    x_val, y_val = x_val[:100, :], y_val[:100]  # Maximum of 100 validation samples
+    if is_standardize_features is True:
+        # Apply standardization on numerical features
+        x_train, x_val, x_test = standardize_features(x_train, x_val, x_test)
+        y_train, y_val, y_test = [y_set.squeeze() for y_set in
+                                  standardize_features(y_train.reshape(-1, 1), y_val.reshape(-1, 1),
+                                                       y_test.reshape(-1, 1))]
 
     if is_add_bias_term is True:
         x_train = np.hstack((x_train, np.ones((x_train.shape[0], 1))))
@@ -95,14 +97,14 @@ def random_split_dataset(x_all, y_all,
 def execute_trail(x_train: np.ndarray, y_train: np.ndarray,
                   x_val: np.ndarray, y_val: np.ndarray,
                   x_test: np.ndarray, y_test: np.ndarray,
-                  # Trail meta data
                   trail_num: int, trainset_size: int, dataset_name: str,
-                  # Learners param
-                  is_eval_mdl: bool, is_eval_empirical_pnml: bool, is_eval_analytical_pnml: bool,
-                  debug_print: bool = True):
-    t0 = time.time()
-
+                  optimization_dict: dict, debug_print: bool = True, logger_file_path: str = None) -> pd.DataFrame:
     # Initialize output
+    logger = logging.getLogger(__name__)
+    if logger_file_path is not None:
+        logger = logging.basicConfig(filename=logger_file_path, level=logging.INFO)
+
+    t0 = time.time()
     df_list = []
 
     # General statistics
@@ -121,41 +123,32 @@ def execute_trail(x_train: np.ndarray, y_train: np.ndarray,
     df_list.append(mn_df)
     debug_print and logger.info('calc_mn_learner_performance in {:.3f} sec'.format(time.time() - t1))
 
-    # Genie learner
-    t1 = time.time()
-    genie_df, theta_test_genies, theta_val_genies, genie_var_dict = calc_genie_performance(x_train, y_train,
-                                                                                           x_val, y_val,
-                                                                                           x_test, y_test,
-                                                                                           theta_mn)
-    df_list.append(genie_df)
-    debug_print and logger.info('calc_genie_performance in {:.3f} sec. x_train.shape={}'.format(time.time() - t1,
-                                                                                                x_train.shape))
-
     # Empirical pNML learner
     t1 = time.time()
-    if is_eval_empirical_pnml is True:
-        pnml_df = calc_empirical_pnml_performance(x_train, y_train, x_val, y_val, x_test, y_test,
-                                                  theta_val_genies, theta_test_genies, genie_var_dict)
-        df_list.append(pnml_df)
+    pnml_df = calc_empirical_pnml_performance(x_train, y_train, x_val, y_val, x_test, y_test,
+                                              optimization_dict['pnml_lambda_optim_dict'])
+    df_list.append(pnml_df)
     debug_print and logger.info('calc_empirical_pnml_performance in {:.3f} sec'.format(time.time() - t1))
 
     # Analytical pNML learner
     t1 = time.time()
-    if is_eval_analytical_pnml is True:
-        if 'pnml_valset_mean_var' in genie_var_dict:
-            analytical_pnml_var = genie_var_dict['pnml_valset_mean_var']
-        else:
-            analytical_pnml_var = [mn_valset_var] * len(x_test)
-        analytical_pnml_df = calc_analytical_pnml_performance(x_train, y_train, x_test, y_test,
-                                                              theta_mn, theta_test_genies, analytical_pnml_var)
-        df_list.append(analytical_pnml_df)
+    pnml_vars = pnml_df['empirical_pnml_variance']
+    analytical_pnml_df = calc_analytical_pnml_performance(x_train, y_train, x_test, y_test, theta_mn, pnml_vars)
+    df_list.append(analytical_pnml_df)
     debug_print and logger.info('calc_analytical_pnml_performance in {:.3f} sec'.format(time.time() - t1))
+
+    # Genie learner
+    t1 = time.time()
+    pnml_vars = pnml_df['empirical_pnml_variance']
+    genie_df = calc_genie_performance(x_train, y_train, x_test, y_test, theta_mn, pnml_vars)
+    df_list.append(genie_df)
+    debug_print and logger.info('calc_genie_performance in {:.3f} sec. x_train.shape={}'.format(time.time() - t1,
+                                                                                                x_train.shape))
 
     # MDL
     t1 = time.time()
-    if is_eval_mdl is True:
-        mdl_df = calc_mdl_performance(x_train, y_train, x_val, y_val, x_test, y_test, mn_valset_var)
-        df_list.append(mdl_df)
+    mdl_df = calc_mdl_performance(x_train, y_train, x_val, y_val, x_test, y_test, mn_valset_var)
+    df_list.append(mdl_df)
     debug_print and logger.info('calc_mdl_performance in {:.3f} sec'.format(time.time() - t1))
 
     res_df = pd.concat(df_list, axis=1, sort=False)
@@ -163,15 +156,3 @@ def execute_trail(x_train: np.ndarray, y_train: np.ndarray,
     debug_print and logger.info(
         '    Finish {} trainset_size: {} in {:.3f}'.format(dataset_name, trainset_size, time.time() - t0))
     return res_df
-
-
-def download_regression_datasets(data_dir: str, out_path: str):
-    t0 = time.time()
-    datasets_dict = {}
-    for dataset_name in tqdm(pmlb.regression_dataset_names):
-        data = pmlb.fetch_data(dataset_name, return_X_y=False, local_cache_dir=data_dir)
-        datasets_dict[dataset_name] = {'features': data.shape[1], 'samples': data.shape[0]}
-    df = pd.DataFrame(datasets_dict).T
-    df.sort_values(by='features', ascending=False, inplace=True)
-    df.to_csv(osp.join(out_path, 'datasets.csv'))
-    logger.info('Finish download_regression_datasets in {:.3f} sec'.format(time.time() - t0))

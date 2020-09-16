@@ -4,8 +4,6 @@ import math
 import numpy as np
 import pandas as pd
 
-from learner_utils.pnml_utils import compute_pnml_logloss
-
 logger = logging.getLogger(__name__)
 
 
@@ -89,14 +87,12 @@ class AnalyticalPNML:
 
 
 def calc_analytical_pnml_performance(x_train: np.ndarray, y_train: np.ndarray, x_test: np.ndarray, y_test: np.ndarray,
-                                     theta_erm: np.ndarray, theta_genies: list, var_genies: list) -> pd.DataFrame:
+                                     theta_erm: np.ndarray, variances: list) -> pd.DataFrame:
     # Fit genie
     pnml_h = AnalyticalPNML(x_train, theta_erm)
 
     # pNML
-    norm_factors = np.array([pnml_h.calc_over_param_norm_factor(x.T, var) for x, var in zip(x_test, var_genies)])
-    res_dict_pnml = {
-        'analytical_pnml_regret': np.log(norm_factors),
-        'analytical_pnml_test_logloss': compute_pnml_logloss(x_test, y_test, theta_genies, var_genies, norm_factors)}
+    norm_factors = np.array([pnml_h.calc_over_param_norm_factor(x.T, var) for x, var in zip(x_test, variances)])
+    res_dict_pnml = {'analytical_pnml_regret': np.log(norm_factors)}
     analytical_pnml_df = pd.DataFrame(res_dict_pnml)
     return analytical_pnml_df

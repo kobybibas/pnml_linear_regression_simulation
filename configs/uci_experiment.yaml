@@ -1,37 +1,34 @@
-data_dir: ../data               # directory to store the downloaded data in
+data_dir: ../data/UCI_Datasets  # directory to store the downloaded data in
 n_trails: 1                     # Number of repetition per experiment. Each with different random initialization
-num_trainset_sizes: 20          # Number of trainset sizes to eval
-trainset_sizes: []
-seed: -1
+trainset_sizes: []              # Number of trainset sizes to eval. if empty use default
 fast_dev_run: false
 
 # Preprocess param
-is_standardize_feature: true
-is_standardize_samples: false
+is_standardize_features: true
 is_add_bias_term: true
-
-# Learner params
-is_eval_mdl: true
-is_eval_empirical_pnml: true
-is_eval_analytical_pnml: true
-
 
 # Machine params
 is_local_mode: false            # Whether to use ray debug mode: using only 1 cpu.
 num_cpus: -1                    # Number of cpu to use. Set -1 to use all available cpus.
-is_datasets_statistics: false   # Whether to download all regression datasets.
 
 # Datasets to analyze
-dataset_names:
-  - "UCI_Datasets/bostonHousing/"
-  - "UCI_Datasets/concrete/"
-  - "UCI_Datasets/energy/"
-  - "UCI_Datasets/kin8nm/"
-  - "UCI_Datasets/naval-propulsion-plant/"
-  - "UCI_Datasets/power-plant/"
-#  - "UCI_Datasets/protein-tertiary-structure/"
-  - "UCI_Datasets/wine-quality-red/"
-  - "UCI_Datasets/yacht/"
+dataset_name: bostonHousing
+# concrete
+# energy
+# kin8nm
+# naval-propulsion-plant # todo: this producing a lot of prints
+# power-plant
+# protein-tertiary-structure
+# wine-quality-red
+# yacht
+
+
+optimization_dict:
+  pnml_lambda_optim_dict:
+    tol_func: 1e-6
+    tol_lamb: 1e-12
+    max_iter: 1e4
+
 
 train_test_split_num: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 ,18 ,19]
 

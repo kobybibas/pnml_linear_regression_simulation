@@ -7,100 +7,102 @@ from learner_utils.learner_helpers import calc_theta_norm, fit_least_squares_est
 
 logger = logging.getLogger(__name__)
 
-# Apply default minimization params
-minimize_dict = {'disp': False, 'maxiter': 2000, 'xtol': 1e-12}
 
-
-def choose_initial_guess(phi_arr, y, max_norm):
-    lamb_chosen = 0.0
-    lamb_list = [0.0, 1e-16, 1e-6, 1e-3, 1.0, 1e2, 1e3, 1e4, 1e6, 1e7, 1e8, 1e9]
-    for lamb_fit in lamb_list:
-        theta = fit_least_squares_estimator(phi_arr, y, lamb=lamb_fit)
-        norm = calc_theta_norm(theta)
-
-        if norm <= max_norm:
-            lamb_chosen = lamb_fit
-            break
-
-    return lamb_chosen
-
-
-def execute_binary_lamb_search(phi_arr: np.ndarray, y: np.ndarray, max_norm: float, start: float = 0.0,
-                               end: float = 1e21,
-                               tol_lamb: float = 1e-9, tol_mse: float = 1e-6,
+def execute_binary_lamb_search(phi_arr: np.ndarray, y: np.ndarray, max_norm: float,
+                               lamb_lower: float = 0.0, lamb_upper: float = 1e21,
+                               tol_lamb: float = 1e-9, tol_func: float = 1e-6,
                                max_iter: int = 10000, n_iter_for_scale: int = 10) -> (float, dict):
     i = 0
-    norm_start = calc_theta_norm(fit_least_squares_estimator(phi_arr, y, lamb=start))
-    norm_end = calc_theta_norm(fit_least_squares_estimator(phi_arr, y, lamb=end))
+    norm_start = calc_theta_norm(fit_least_squares_estimator(phi_arr, y, lamb=lamb_lower))
+    norm_end = calc_theta_norm(fit_least_squares_estimator(phi_arr, y, lamb=lamb_upper))
 
     # Initialize result dict for report
     res_dict = {'success': False,
                 'norm_start': [norm_start],
                 'norm_end': [norm_end],
                 'max_norm': max_norm,
-                'start': [start],
-                'end': [end],
+                'start': [lamb_lower],
+                'end': [lamb_upper],
                 'message': '',
                 'iter': i}
 
     # Check boundaries
-    if np.abs(norm_start - max_norm) < tol_mse:
+    if norm_start < max_norm:
         res_dict['success'] = True
-        return start, res_dict
-    if np.abs(norm_end - max_norm) < tol_lamb:
+        return lamb_lower, res_dict
+    if np.abs(norm_start - max_norm) < tol_func:
         res_dict['success'] = True
-        return end, res_dict
+        return lamb_lower, res_dict
+    if np.abs(norm_end - max_norm) < tol_func:
+        res_dict['success'] = True
+        return lamb_upper, res_dict
 
     while True:
         # Update the middle lambda norm, first few iteration in more close to start
-        middle = 0.5 * (start + end) if i > n_iter_for_scale else 0.5 * (start + end / 10)
+        middle = 0.5 * (lamb_lower + lamb_upper) if i > n_iter_for_scale else 0.5 * (lamb_lower + lamb_upper / 10)
         norm_middle = calc_theta_norm(fit_least_squares_estimator(phi_arr, y, lamb=middle))
 
         # If interval is too small: end search
-        if np.abs(norm_start - norm_end) < tol_mse or np.abs(start - end) < tol_mse:
+        if np.abs(norm_start - norm_end) < tol_func:
             res_dict['success'] = True
+            res_dict['message'] += 'tol_func was reached. '
+            break
+        if np.abs(lamb_lower - lamb_upper) < tol_lamb:
+            res_dict['success'] = True
+            res_dict['message'] += 'tol_lamb was reached. '
             break
 
         # Update edges
         if norm_middle > max_norm:
-            start = middle
+            lamb_lower = middle
             norm_start = norm_middle
         else:
-            end = middle
+            lamb_upper = middle
             norm_end = norm_middle
 
         # Verify interval is valid
         if i > max_iter:
-            res_dict['message'] = 'Max iteration number succeed'
+            res_dict['message'] += 'Max iteration was reached. '
             break
         if norm_start < max_norm:
-            res_dict['message'] = f'norm_start is smaller than the max norm: ' + \
-                                  f'[norm_start max_norm diff]=[{norm_start} {max_norm} {norm_start-max_norm}]'
+            res_dict['message'] += f'norm_start is smaller than the max norm: ' + \
+                                   f'[norm_start max_norm diff]=[{norm_start} {max_norm} {norm_start-max_norm}] '
             break
         if norm_end > max_norm:
-            res_dict['message'] = f'norm_end is greater than the max norm: ' + \
-                                  f'[norm_end max_norm diff]=[{norm_end} {max_norm} {norm_end-max_norm}]'
+            res_dict['message'] += f'norm_end is greater than the max norm: ' + \
+                                   f'[norm_end max_norm diff]=[{norm_end} {max_norm} {norm_end-max_norm}] '
             break
 
         # Update report dict
         res_dict['norm_start'].append(norm_start)
         res_dict['norm_end'].append(norm_end)
-        res_dict['start'].append(start)
-        res_dict['end'].append(end)
+        res_dict['start'].append(lamb_lower)
+        res_dict['end'].append(lamb_upper)
         res_dict['iter'] = i
         i += 1
 
     if norm_end > max_norm:
-        res_dict['message'] = 'norm is greater than max norm.'
+        res_dict['message'] += 'norm is greater than max norm.'
         res_dict['success'] = False
-    if np.abs(max_norm - norm_end) > 1e-1:
-        res_dict['message'] = 'norm is far from the max norm'
+    if np.abs(max_norm - norm_end) > 0.01 * max_norm:
+        res_dict['message'] += 'norm is far from the max norm by more the 1%.'
         res_dict['success'] = False
 
-    return end, res_dict
+    return lamb_upper, res_dict
 
 
-def fit_norm_constrained_least_squares(phi_arr: np.ndarray, y: np.ndarray, max_norm: float) -> np.ndarray:
+def find_upper_bound_lamb(phi_arr: np.ndarray, y: np.ndarray, max_norm: float) -> float:
+    # Find lambda that produces norm that is lower than the max norm
+    end, norm = 0.1, np.inf
+    while norm > max_norm:
+        end *= 10
+        norm = calc_theta_norm(fit_least_squares_estimator(phi_arr, y, end))
+    return end
+
+
+def fit_norm_constrained_least_squares(phi_arr: np.ndarray, y: np.ndarray, max_norm: float,
+                                       tol_func: float = 1 - 6, tol_lamb: float = 1e-9,
+                                       max_iter: int = 1e4) -> np.ndarray:
     """
     Fit least squares estimator. Constrain it by the max norm constrain
     :param phi_arr: data matrix. Each row represents an example.
@@ -110,16 +112,13 @@ def fit_norm_constrained_least_squares(phi_arr: np.ndarray, y: np.ndarray, max_n
     """
     n, m = phi_arr.shape
     assert n == len(y)
-    tol_func, tol_lamb, max_iter = 1e-6, 1e-9, 1e4
 
-    # Find lambda that produces norm that is lower than the max norm
-    end, norm = 0.1, np.inf
-    while norm > max_norm:
-        end *= 10
-        norm = calc_theta_norm(fit_least_squares_estimator(phi_arr, y, end))
+    lamb_lower = 0.0
+    lamb_upper = find_upper_bound_lamb(phi_arr, y, max_norm)
 
     # Find the lambda that satisfies the max norm constrain
-    lamb_fit, res_dict = execute_binary_lamb_search(phi_arr, y, max_norm, 0.0, end, tol_mse=tol_func, tol_lamb=tol_lamb)
+    lamb_fit, res_dict = execute_binary_lamb_search(phi_arr, y, max_norm, lamb_lower, lamb_upper,
+                                                    tol_func=tol_func, tol_lamb=tol_lamb, max_iter=max_iter)
 
     # Produce theta
     theta_fit = fit_least_squares_estimator(phi_arr, y, lamb=lamb_fit)

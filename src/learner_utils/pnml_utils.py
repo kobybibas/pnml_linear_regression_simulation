@@ -1,11 +1,8 @@
 import logging
-import time
 
 import numpy as np
-import pandas as pd
 
-from learner_utils.learner_helpers import calc_best_var, calc_var_with_valset
-from learner_utils.learner_helpers import calc_logloss, calc_mse, calc_theta_norm, fit_least_squares_estimator
+from learner_utils.learner_helpers import calc_theta_norm, fit_least_squares_estimator
 from learner_utils.optimization_utils import fit_norm_constrained_least_squares
 from learner_utils.optimization_utils import optimize_pnml_var
 
@@ -42,11 +39,11 @@ def compute_pnml_logloss(phi_arr: np.ndarray, y_gt: np.ndarray, theta_genies: np
 
 class Pnml:
     def __init__(self, phi_train: np.ndarray, y_train: np.ndarray, lamb: float = 0.0,
-                 is_y_one_sided_interval: bool = True):
+                 is_one_sided_interval: bool = True):
 
         # The interval for possible y, for creating pdf
-        self.is_y_one_sided_interval = is_y_one_sided_interval
-        self.y_to_eval = np.append(0, np.logspace(-16, 5, 1000))
+        self.is_y_one_sided_interval = is_one_sided_interval
+        self.y_to_eval = np.append(0, np.logspace(-16, 6, 1000))
         if self.is_y_one_sided_interval is False:
             self.y_to_eval = np.unique(np.append(self.y_to_eval, -self.y_to_eval))
 
@@ -103,7 +100,7 @@ class Pnml:
             res_dict['success'] = False
         if probs_of_genies[-1] > np.finfo('float').eps:
             # Expected probability 0 at the edges
-            res_dict['message'] += 'Interval is too small prob={}. '.format(probs_of_genies)
+            res_dict['message'] += 'Interval is too small prob={}. '.format(probs_of_genies[-1])
             res_dict['success'] = False
         return res_dict
 
@@ -141,11 +138,26 @@ class Pnml:
         probs_of_genies = np.exp(-(y_trained - y_hat) ** 2 / (2 * var)) / np.sqrt(2 * np.pi * var)
         return probs_of_genies
 
+    def optimize_variance(self, phi_test: np.ndarray, y_gt: float) -> float:
+
+        y_vec = self.create_y_vec_to_eval(phi_test, self.theta_erm, self.y_to_eval)
+        thetas = self.calc_genie_thetas(phi_test, y_vec)
+
+        phi_arr, ys = add_test_to_train(self.phi_train, phi_test), np.append(self.y_train, y_gt)
+        theta_genie = self.fit_least_squares_estimator(phi_arr, ys)
+
+        # Calc best sigma
+        epsilon_square_list = (y_vec - np.array([theta.T @ phi_test for theta in thetas]).squeeze()) ** 2
+        epsilon_square_true = (y_gt - theta_genie.T @ phi_test) ** 2
+        best_var = optimize_pnml_var(epsilon_square_true, epsilon_square_list, y_vec)
+        return best_var
+
 
 class PnmlMinNorm(Pnml):
-    def __init__(self, constrain_factor: float, *args, **kwargs):
+    def __init__(self, constrain_factor: float, pnml_lambda_optim_dict: dict, *args, **kwargs):
         super().__init__(*args, **kwargs)
         assert self.lamb == 0.0
+        self.pnml_lambda_optim_dict = pnml_lambda_optim_dict
 
         # The norm constrain is set to: constrain_factor * ||\theta_MN||^2
         self.constrain_factor = constrain_factor
@@ -153,7 +165,9 @@ class PnmlMinNorm(Pnml):
 
     def fit_least_squares_estimator(self, phi_arr: np.ndarray, y: np.ndarray) -> np.ndarray:
         max_norm = self.max_norm
-        theta = fit_norm_constrained_least_squares(phi_arr, y, max_norm)
+        theta = fit_norm_constrained_least_squares(phi_arr, y, max_norm,
+                                                   self.pnml_lambda_optim_dict['tol_func'],
+                                                   self.pnml_lambda_optim_dict['tol_lamb'],
+                                                   self.pnml_lambda_optim_dict['max_iter'])
+
         return theta
-
-
