@@ -20,6 +20,10 @@ def add_test_to_train(phi_train: np.ndarray, phi_test: np.ndarray) -> np.ndarray
     if len(phi_test.shape) == 1:
         phi_test = np.expand_dims(phi_test, 0)
 
+    # convert test to row vector if needed
+    if phi_test.shape[0] == phi_train.shape[1]:
+        phi_test = phi_test.T
+
     # Concat train and test
     phi_arr = np.concatenate((phi_train, phi_test), axis=0)
     return phi_arr
@@ -38,7 +42,8 @@ def compute_pnml_logloss(phi_arr: np.ndarray, y_gt: np.ndarray, theta_genies: np
 
 
 class Pnml:
-    def __init__(self, phi_train: np.ndarray, y_train: np.ndarray, lamb: float = 0.0,
+    def __init__(self, phi_train: np.ndarray, y_train: np.ndarray,
+                 lamb: float = 0.0, sigma_square: float = 1e-3,
                  is_one_sided_interval: bool = True):
 
         # The interval for possible y, for creating pdf
@@ -54,11 +59,15 @@ class Pnml:
         # Regularization term
         self.lamb = lamb
 
+        # Default variance
+        self.sigma_square = sigma_square
+
         # ERM least squares parameters
         self.theta_erm = fit_least_squares_estimator(self.phi_train, self.y_train, lamb=self.lamb)
 
         # Indication of success or fail
         self.res_dict = None
+        self.debug_dict = {}
 
     def fit_least_squares_estimator(self, phi_arr: np.ndarray, y: np.ndarray):
         return fit_least_squares_estimator(phi_arr, y, lamb=self.lamb)
@@ -66,18 +75,22 @@ class Pnml:
     def predict_erm(self, phi_test: np.ndarray) -> float:
         return float(self.theta_erm.T @ phi_test)
 
-    def calc_norm_factor(self, phi_test: np.array, var: float = None) -> float:
+    def calc_norm_factor(self, phi_test: np.array, sigma_square=None) -> float:
         """
         Calculate normalization factor using numerical integration
         :param phi_test: test features to evaluate.
-        :param var: genie's variance.
+        :param sigma_square: genie's variance.
         :return: log normalization factor.
         """
+        self.debug_dict = {}
         y_vec = self.create_y_vec_to_eval(phi_test, self.theta_erm, self.y_to_eval)
         thetas = self.calc_genie_thetas(phi_test, y_vec)
 
+        if sigma_square is None:
+            sigma_square = self.sigma_square
+
         # Calc genies predictions
-        probs_of_genies = self.calc_probs_of_genies(phi_test, y_vec, thetas, var)
+        probs_of_genies = self.calc_probs_of_genies(phi_test, y_vec, thetas, sigma_square)
 
         # Integrate to find the pNML normalization factor
         norm_factor = float(np.trapz(probs_of_genies, x=y_vec))
@@ -116,7 +129,7 @@ class Pnml:
         """
         y_pred = theta_erm.T @ phi_test
         y_vec = y_to_eval + y_pred
-        return y_vec
+        return np.squeeze(y_vec)
 
     def calc_genie_thetas(self, phi_test: np.ndarray, y_vec: np.ndarray) -> list:
         phi_arr = add_test_to_train(self.phi_train, phi_test)
@@ -124,18 +137,18 @@ class Pnml:
         return thetas
 
     @staticmethod
-    def calc_probs_of_genies(phi_test, y_trained: np.ndarray, thetas: np.ndarray, var: float) -> np.ndarray:
+    def calc_probs_of_genies(phi_test, y_trained: np.ndarray, thetas: np.ndarray, sigma_square: float) -> np.ndarray:
         """
         Calculate the genie probability of the label it was trained with
         :param phi_test: test set sample
         :param y_trained: The labels that the genie was trained with
         :param thetas: The fitted parameters to the label (the trained genie)
-        :param var: the variance (sigma^2)
+        :param sigma_square: the variance (sigma^2)
         :return: the genie probability of the label it was trained with
         """
         y_hat = np.array([theta.T @ phi_test for theta in thetas]).squeeze()
         y_trained = y_trained.squeeze()
-        probs_of_genies = np.exp(-(y_trained - y_hat) ** 2 / (2 * var)) / np.sqrt(2 * np.pi * var)
+        probs_of_genies = np.exp(-(y_trained - y_hat) ** 2 / (2 * sigma_square)) / np.sqrt(2 * np.pi * sigma_square)
         return probs_of_genies
 
     def optimize_variance(self, phi_test: np.ndarray, y_gt: float) -> float:
@@ -165,9 +178,12 @@ class PnmlMinNorm(Pnml):
 
     def fit_least_squares_estimator(self, phi_arr: np.ndarray, y: np.ndarray) -> np.ndarray:
         max_norm = self.max_norm
-        theta = fit_norm_constrained_least_squares(phi_arr, y, max_norm,
-                                                   self.pnml_lambda_optim_dict['tol_func'],
-                                                   self.pnml_lambda_optim_dict['tol_lamb'],
-                                                   self.pnml_lambda_optim_dict['max_iter'])
+        theta, lamb = fit_norm_constrained_least_squares(phi_arr, y, max_norm,
+                                                         self.pnml_lambda_optim_dict['tol_func'],
+                                                         self.pnml_lambda_optim_dict['tol_lamb'],
+                                                         self.pnml_lambda_optim_dict['max_iter'])
 
+        if 'fitted_lamb_list' not in self.debug_dict:
+            self.debug_dict['fitted_lamb_list'] = []
+        self.debug_dict['fitted_lamb_list'].append(lamb)
         return theta

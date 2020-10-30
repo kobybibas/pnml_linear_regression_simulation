@@ -102,7 +102,7 @@ def find_upper_bound_lamb(phi_arr: np.ndarray, y: np.ndarray, max_norm: float) -
 
 def fit_norm_constrained_least_squares(phi_arr: np.ndarray, y: np.ndarray, max_norm: float,
                                        tol_func: float = 1 - 6, tol_lamb: float = 1e-9,
-                                       max_iter: int = 1e4) -> np.ndarray:
+                                       max_iter: int = 1e4) -> (np.ndarray, float):
     """
     Fit least squares estimator. Constrain it by the max norm constrain
     :param phi_arr: data matrix. Each row represents an example.
@@ -135,7 +135,7 @@ def fit_norm_constrained_least_squares(phi_arr: np.ndarray, y: np.ndarray, max_n
         logger.warning('    ' + f'max_norm-[norm_start norm_end]=[{max_norm-norm_start} {max_norm-norm_end}]')
         logger.warning('    ' + f'lamb [start end]=[{start} {end}]')
         logger.warning('    ' + f'[norm max_norm diff]=[{norm} {max_norm} {norm- max_norm}]. mse={mse}.')
-    return theta_fit
+    return theta_fit, lamb_fit
 
 
 def optimize_pnml_var(epsilon_square_gt: float, epsilon_square_list: list, y_trained_list: list) -> np.ndarray:

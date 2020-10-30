@@ -10,61 +10,81 @@ Linear regression is a classical paradigm in statistics. A new look at it is pro
 
 ### Run the code
 
-Install requiremnet
+Install requirement
 
 ```bash
- pip install -r requirements.txt
+# Add channels. Last added is with the highest priorety
+conda config --add channels pytorch
+conda config --add channels conda-forge
+conda config --add channels anaconda
+
+# Install pip for fallback
+conda install --yes pip
+
+# Install with conda. If package installation fails, install with pip.
+while read requirement; do conda install --yes $requirement || pip install $requirement; done < requirements.txt 
 ```
 
-execute simulation
+### Synthetic data with under-parameterized pNML
+
+Execute experiment:
 
 ```bash
- cd src
- python main.py --config_path ../configs/pnml_polynomial.yaml model_degree=3,6,9 -m
- # For minimum norm solution
- python main.py --config_path ../configs/pnml_min_norm_fourier model_degree=2,6,10 -m
+cd src
+python main_synthetic_data.py --config-name pnml_polynomial model_degree=4; \
+python main_synthetic_data.py --config-name pnml_polynomial model_degree=6; \
+python main_synthetic_data.py --config-name pnml_polynomial model_degree=8;  
 ```
 
-Produce figures
+Visaulize:
 
 ```bash
-cd notebooks
-jupyter-notebook pnml_visualization.ipynb
+cd notebook
+jupyter-notebook pnml_viz.ipynb
 ```
 
-The parameters for the code are located in configs directory
+### Synthetic data with over-parameterized pNML
+
+Execute experiment:
 
 ```bash
-.
-├── README.md
-├── bash_scripts
-├── configs
-│   ├── pnml_fourier.yaml
-│   ├── pnml_min_norm_fourier.yaml
-│   └── pnml_polynomial.yaml
-├── notebooks
-│   ├── logistic_regression.ipynb
-│   ├── min_norm_solution.ipynb
-│   ├── notebook_utils.py
-│   └── pnml_visualization.ipynb
-├── output
-├── requirements.txt
-└── src
+cd src
+python main_synthetic_data.py --config-name pnml_min_norm_fourier model_degree=4;  \
+python main_synthetic_data.py --config-name pnml_min_norm_fourier model_degree=10;  \
+python main_synthetic_data.py --config-name pnml_min_norm_fourier model_degree=20;  \
+python main_synthetic_data.py --config-name pnml_min_norm_fourier model_degree=50;  \
+python main_synthetic_data.py --config-name pnml_min_norm_fourier model_degree=100; 
 ```
 
+Visaulize:
 
 ```bash
-python main_real_data.py --config-name ../configs/uci_experiment.yaml  dataset_name=bostonHousing ; \
-python main_real_data.py --config-name ../configs/uci_experiment.yaml  dataset_name=concrete; \
-python main_real_data.py --config-name ../configs/uci_experiment.yaml  dataset_name=energy; \
-python main_real_data.py --config-name ../configs/uci_experiment.yaml  dataset_name=kin8nm; \
-python main_real_data.py --config-name ../configs/uci_experiment.yaml  dataset_name=naval-propulsion-plant; \
-python main_real_data.py --config-name ../configs/uci_experiment.yaml  dataset_name=wine-quality-red;
+cd notebook
+jupyter-notebook pnml_min_norm.ipynb
+```
+
+### Real data
+
+```bash
+cd src
+python main_real_data.py --config-name uci_experiment  dataset_name=bostonHousing ; \
+python main_real_data.py --config-name uci_experiment  dataset_name=concrete; \
+python main_real_data.py --config-name uci_experiment  dataset_name=energy; \
+python main_real_data.py --config-name uci_experiment  dataset_name=kin8nm; \
+python main_real_data.py --config-name uci_experiment  dataset_name=naval-propulsion-plant; \
+python main_real_data.py --config-name uci_experiment  dataset_name=wine-quality-red;
 
 ```
 
+Visaulize:
+
+```bash
+cd notebook
+jupyter-notebook real_data.ipynb
+```
 
 ### Citing
+
 ```
 @inproceedings{bibas2019new,
   title={A new look at an old problem: A universal learning approach to linear regression},

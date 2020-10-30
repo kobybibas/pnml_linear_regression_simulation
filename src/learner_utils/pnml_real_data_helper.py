@@ -88,7 +88,7 @@ def fit_genies_to_dataset(x_train: np.ndarray, y_train: np.ndarray,
         else:
             # Fit over param region
             constrain = calc_theta_norm(theta_erm)
-            theta_genie_i = fit_norm_constrained_least_squares(phi_arr, y, constrain)
+            theta_genie_i, lamb = fit_norm_constrained_least_squares(phi_arr, y, constrain)
 
         theta_genies.append(theta_genie_i)
     return theta_genies

@@ -1,18 +1,25 @@
 pnml_type: pnml
-model_degree: 3
-lamb: 0
+model_degree: 8
 x_test_max: 1.0
 x_test_min: -1.0
 dx_test: 0.01
-is_multi_process: true
-y_max: 100
-y_min: 1e-20 # Constructing the interval such that: [-y_max:y_min]+[0]+[y_min:y_max]
-y_num: 50000
-min_sigma_square: 1e-3
 x_train: [-0.7, -0.6, 0.05, 0.1, 0.25, 0.3, 0.35, 0.5, 0.55, 0.6]
 y_train: [-0.1, -0.2, -2.0, -1.0, -0.5, -0.3, 0.1, 0.5, 0.2, 0.1]
-data_type: polynomial # fourier
-is_adaptive: false
+data_type: polynomial
+sigma_square: 1e-3
+
+lamb: 0
+constrain_factor: 1.0
+
+# Machine params
+is_local_mode: false  # Whether to use ray debug mode: using only 1 cpu.
+num_cpus: -1          # Number of cpu to use. Set -1 to use all available cpus.
+
+# Optimization params
+pnml_lambda_optim_dict:
+  tol_func: 1e-6
+  tol_lamb: 1e-16
+  max_iter: 1e4
 
 hydra:
   run:

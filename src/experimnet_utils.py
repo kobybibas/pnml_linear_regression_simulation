@@ -1,92 +1,68 @@
-import copy
 import logging
-import multiprocessing as mp
-import os
-import os.path as osp
+import time
 
 import numpy as np
-from tqdm import tqdm
+import pandas as pd
+import ray
 
-from data_utils import DataBase
+from data_utils.synthetic_data_utils import DataBase
+from learner_utils.analytical_pnml_utils import AnalyticalPNML
 from learner_utils.pnml_utils import Pnml
 
 logger = logging.getLogger(__name__)
 
 
-def execute_x_vec(x_test_array: np.ndarray, data_h: DataBase, pnml_h: Pnml, out_dir: str,
-                  is_mp: bool = False, is_save_outputs: bool = True) -> list:
+def execute_x_vec(x_test_array: np.ndarray, data_h: DataBase,
+                  pnml_h: Pnml, analytical_pnml_h: AnalyticalPNML) -> pd.DataFrame:
     """
     For each x point, calculate its regret.
     :param x_test_array: x array that contains the x points that will be calculated
     :param data_h: data handler class, used for training set.
     :param pnml_h: The learner class handler.
-    :param out_dir: the output directory
-    :param is_mp: if calculate using multiprocess.
     :return: list of the calculated regret.
     """
 
-    # Initialize output
-    save_dir_genies_outputs = osp.join(out_dir, 'genies_output')
-    save_file_name = osp.join(out_dir, 'res_model_degree_{}_lamb_{}.npy'.format(data_h.model_degree, pnml_h.lamb))
-    save_theta_erm_file_name = osp.join(out_dir,
-                                        'res_theta_erm_model_degree_{}_lamb_{}.npy'.format(data_h.model_degree,
-                                                                                           pnml_h.lamb))
-    os.makedirs(save_dir_genies_outputs, exist_ok=True)
-
     # Iterate on test samples
-    if is_mp is False:
-        res_list = execute_x_test_array(x_test_array, data_h, pnml_h, save_file_name, save_dir_genies_outputs)
-    else:
-        res_list = execute_x_test_array_mp(x_test_array, data_h, pnml_h, save_file_name, save_dir_genies_outputs)
+    t0 = time.time()
+    ray_task_list = []
+    for i, x_test in enumerate(x_test_array):
+        ray_task = execute_x_test.remote(x_test, data_h, pnml_h, analytical_pnml_h)
+        ray_task_list.append(ray_task)
+    logger.info('Finish submitting tasks in {:.2f} sec'.format(time.time() - t0))
 
-    if is_save_outputs is True:
-        logger.info('Save to {}'.format(save_file_name))
-        np.save(save_theta_erm_file_name, pnml_h.theta_erm)
-        np.save(save_file_name, res_list)
+    # collect results
+    res_list = []
+    total_jobs = len(ray_task_list)
+    logger.info('Collecting jobs. total_jobs={}'.format(total_jobs))
+    for job_num in range(total_jobs):
+        t1 = time.time()
+        ready_id, ray_task_list = ray.wait(ray_task_list)
+        res_i = ray.get(ready_id[0])
+        res_list.append(res_i)
 
-    return res_list
+        # Report
+        x_test = res_i['x_test']
+        logger.info('[{:04d}/{}] Finish x={}. in {:3.1f}s.'.format(job_num, total_jobs - 1, x_test, time.time() - t1))
+
+    # Save to file
+    res_df = pd.DataFrame(res_list)
+    res_df = res_df.sort_values(by=['x_test'], ascending=[True])
+    return res_df
 
 
-def execute_x_test(x_test: float, data_h: DataBase, pnml_h: Pnml, save_dir_genies_outputs: str) -> dict:
+@ray.remote
+def execute_x_test(x_test: float, data_h: DataBase, pnml_h: Pnml, analytical_pnml_h: AnalyticalPNML) -> dict:
     phi_test = data_h.convert_point_to_features(x_test, data_h.model_degree)
     y_hat_erm = pnml_h.predict_erm(phi_test)
-    regret = pnml_h.calc_norm_factor(phi_test)
+    nf = pnml_h.calc_norm_factor(phi_test, sigma_square=pnml_h.sigma_square)
+    regret = np.log(nf)
+    trainset_size, num_features = data_h.phi_train.shape
 
-    # Save genies products
-    np.save(osp.join(save_dir_genies_outputs, f'genies_outputs_{x_test}.npy'), pnml_h.genies_output)
-    return {'x_test': x_test, 'regret': regret, 'y_hat_erm': y_hat_erm}
+    # Analytical pNML
+    analytical_nf = analytical_pnml_h.calc_norm_factor(phi_test, sigma_square=pnml_h.sigma_square)
+    analytical_regret = np.log(analytical_nf)
 
-
-def execute_x_test_array(x_test_array: np.ndarray, data_h: DataBase, pnml_h: Pnml,
-                         save_file_name: str, save_dir_genies_outputs: str) -> list:
-    res_list = []
-    for i, x_test in enumerate(x_test_array):
-        res = execute_x_test(x_test, data_h, pnml_h, save_dir_genies_outputs)
-        res_list.append(res)
-        logger.info('[{}/{}] x_test={}. Save to {}'.format(i, len(x_test_array), x_test, save_file_name))
-        np.save(save_file_name, res_list)
-    return res_list
-
-
-def execute_x_test_array_mp(x_test_array: np.ndarray, data_h: DataBase, pnml_h: Pnml,
-                            save_file_name: str, save_dir_genies_outputs: str) -> list:
-    pool = mp.Pool()
-    logger.info('mp.cpu_count: {}'.format(mp.cpu_count()))
-    results = []
-    pbar = tqdm(total=len(x_test_array))
-
-    def log_result(result):
-        results.append(result)
-        pbar.update()
-
-    for i, x_test in enumerate(x_test_array):
-        pool.apply_async(execute_x_test,
-                         args=(x_test, copy.deepcopy(data_h), copy.deepcopy(pnml_h), save_dir_genies_outputs),
-                         callback=log_result)
-
-    pool.close()
-    pool.join()
-    pbar.close()
-    res_list = sorted(results, key=lambda k: k['x_test'])
-    np.save(save_file_name, res_list)
-    return res_list
+    return {'x_test': x_test, 'nf': nf, 'regret': regret, 'y_hat_erm': y_hat_erm,
+            'analytical_nf': analytical_nf, 'analytical_regret': analytical_regret,
+            'nf0': analytical_pnml_h.nf0, 'nf1': analytical_pnml_h.nf1, 'nf2': analytical_pnml_h.nf2,
+            'trainset_size': trainset_size, 'num_features': num_features}

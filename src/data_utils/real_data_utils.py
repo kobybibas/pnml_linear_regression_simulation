@@ -3,6 +3,7 @@ import os.path as osp
 import time
 
 import numpy as np
+import numpy.linalg as npl
 import pandas as pd
 import ray
 from sklearn.preprocessing import StandardScaler
@@ -49,7 +50,7 @@ def standardize_features(x_train: np.ndarray, x_val: np.ndarray, x_test: np.ndar
 
 
 def get_uci_data(dataset_name: str, data_dir: str, train_test_split_num: int,
-                 is_standardize_features: bool = True, is_add_bias_term: bool = True):
+                 is_standardize_features: bool = True, is_add_bias_term: bool = True, is_normalize_data: bool = True):
     data_txt_path = osp.join(data_dir, dataset_name, 'data', 'data.txt')
     data = np.loadtxt(data_txt_path)
 
@@ -90,6 +91,11 @@ def get_uci_data(dataset_name: str, data_dir: str, train_test_split_num: int,
         x_val = np.hstack((x_val, np.ones((x_val.shape[0], 1))))
         x_test = np.hstack((x_test, np.ones((x_test.shape[0], 1))))
 
+    if is_normalize_data is True:
+        x_train = x_train / npl.norm(x_train, axis=1, keepdims=True)
+        x_val = x_val / npl.norm(x_val, axis=1, keepdims=True)
+        x_test = x_test / npl.norm(x_test, axis=1, keepdims=True)
+
     return x_train, y_train, x_val, y_val, x_test, y_test
 
 
@@ -102,7 +108,8 @@ def execute_trail(x_train: np.ndarray, y_train: np.ndarray,
     # Initialize output
     logger = logging.getLogger(__name__)
     if logger_file_path is not None:
-        logger = logging.basicConfig(filename=logger_file_path, level=logging.INFO)
+        logging.basicConfig(filename=logger_file_path, level=logging.INFO)
+        logger = logging.getLogger(__name__)
 
     t0 = time.time()
     df_list = []

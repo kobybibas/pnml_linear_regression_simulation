@@ -2,6 +2,7 @@ import logging
 from abc import abstractmethod
 
 import numpy as np
+import numpy.linalg as npl
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,11 @@ class DataBase:
 
         # Matrix of training feature [phi0;phi1;phi2...]. phi is the features phi(x)
         self.phi_train = self.create_train_features()
+        logger.info('self.phi_train.shape: {}'.format(self.phi_train.shape))
+        trainset_size, _ = self.phi_train.shape
+        u, h, v_t = npl.svd(self.phi_train)
+        assert trainset_size == len(self.y)
+        logger.info('Training set eigenvalues: {}'.format(h))
 
     def create_train_features(self) -> np.ndarray:
         """
@@ -27,9 +33,13 @@ class DataBase:
         Each row corresponds to feature vector.
         :return: phi: training set feature matrix.
         """
-        logger.info('Create train: num of features {}'.format(self.model_degree))
-        phi_train = self.convert_to_features().T
-        logger.info('self.phi_train.shape: {}'.format(phi_train.shape))
+        phi_train = []
+        for x_i in self.x:
+            phi_train_i = self.convert_point_to_features(x_i, self.model_degree)
+
+            # Convert column vector to raw and append
+            phi_train.append(np.squeeze(phi_train_i.T))
+        phi_train = np.asarray(phi_train)
         return phi_train
 
     def get_data_points_as_list(self):
@@ -44,14 +54,6 @@ class DataBase:
         """
         return self.y
 
-    @abstractmethod
-    def convert_to_features(self) -> np.ndarray:
-        """ To override
-        convert self.x to features
-        phi = self.x
-        """
-        return self.x
-
     @staticmethod
     @abstractmethod
     def convert_point_to_features(x: float, model_degree: int) -> np.ndarray:
@@ -61,80 +63,48 @@ class DataBase:
 
 class DataPolynomial(DataBase):
 
-    def convert_to_features(self) -> np.ndarray:
-        """
-        Convert the training point to feature matrix.
-        :return: phy = [x0^0 , x0^1, ... , x0^pol_degree; x1^0 , x1^1, ... , x1^pol_degree].T
-        """
-        phi = []
-        for n in range(self.model_degree + 1):
-            phi.append(np.power(self.x, n))
-        phi = np.asarray(phi)
-        return phi
-
     @staticmethod
     def convert_point_to_features(x: float, pol_degree: int) -> np.ndarray:
         """
         Given a training point, convert it to features
         :param x: training point.
         :param pol_degree: the assumed polynomial degree.
-        :return: phi = [x^0,x^1,x^2,...].T
+        :return: phi = [x^0,x^1,x^2,...], row vector
         """
         phi = []
         for n in range(pol_degree + 1):
             phi.append(np.power(x, n))
         phi = np.asarray(phi)
-
-        if len(phi.shape) == 1:
-            phi = phi[:, np.newaxis]
-
+        phi = np.expand_dims(phi, 1)
+        phi = phi / npl.norm(phi)
         return phi
 
 
 class DataFourier(DataBase):
-
-    def convert_to_features(self) -> np.ndarray:
-        """
-        Convert the training point to feature matrix.
-        :return: phy = [x0^0 , x0^1, ... , x0^pol_degree; x1^0 , x1^1, ... , x1^pol_degree].T
-        """
-        phi = []
-        n = 1
-
-        for i in range(self.model_degree + 1):
-            if i == 0:
-                phi.append(np.array([1] * len(self.x)))
-            elif i % 2 != 0:
-                phi.append(np.sqrt(2) * np.cos(np.pi * n * self.x))
-            else:
-                phi.append(np.sqrt(2) * np.sin(np.pi * n * self.x))
-                n += 1
-        phi = np.asarray(phi)
-        return phi
 
     @staticmethod
     def convert_point_to_features(x: np.ndarray, model_degree: int) -> np.ndarray:
         """
         Given a training point, convert it to features
         :param x: training point.
-        :param model_degree: number of learnable parameters.
-        :return: phi = [x^0,x^1,x^2,...].T
+        :param model_degree: number of learn-able parameters.
+        :return: phi = [x^0,x^1,x^2,...], row vector
         """
         phi = []
         n = 1
-        for i in range(model_degree + 1):
+        for i in range(model_degree):
             if i == 0:
-                phi.append(1)
+                phi_i = 1
             elif i % 2 != 0:
-                phi.append(np.sqrt(2) * np.cos(np.pi * n * x))
+                phi_i = np.sqrt(2) * np.cos(np.pi * n * x)
             else:
-                phi.append(np.sqrt(2) * np.sin(np.pi * n * x))
+                phi_i = np.sqrt(2) * np.sin(np.pi * n * x)
                 n += 1
-
+            phi.append(phi_i)
         phi = np.asarray(phi)
-        if len(phi.shape) == 1:
-            phi = phi[:, np.newaxis]
+        phi = np.expand_dims(phi, 1)
 
+        phi = phi/npl.norm(phi)
         return phi
 
 

@@ -5,11 +5,12 @@ import time
 
 import hydra
 import numpy as np
+import numpy.linalg as npl
 import pandas as pd
-import psutil
 import ray
 
 from data_utils.real_data_utils import create_trainset_sizes_to_eval, execute_trail, get_uci_data
+from ray_utils import ray_init
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,8 @@ def submit_dataset_experiment_jobs(dataset_name: str, cfg) -> pd.DataFrame:
         # Get dataset statistic
         x_train, y_train, x_val, y_val, x_test, y_test = get_uci_data(dataset_name, cfg.data_dir, trail_num,
                                                                       is_standardize_features=cfg.is_standardize_features,
-                                                                      is_add_bias_term=cfg.is_add_bias_term)
+                                                                      is_add_bias_term=cfg.is_add_bias_term,
+                                                                      is_normalize_data=cfg.is_normalize_data)
 
         # Define train set to evaluate
         n_train, n_features = x_train.shape
@@ -39,6 +41,9 @@ def submit_dataset_experiment_jobs(dataset_name: str, cfg) -> pd.DataFrame:
                 x_train, y_train = x_train[:3, :], y_train[:3]
                 x_val, y_val = x_val[:2, :], y_val[:2]
                 x_test, y_test = x_test[:2, :], y_test[:2]
+
+            _, h, _ = npl.svd(x_train)
+            logger.info('x_train_reduced.shape={}. Training set singular values: {}'.format(x_train_reduced.shape, h))
 
             # Execute trail
             ray_task = execute_trail.remote(x_train_reduced, y_train_reduced,
@@ -80,21 +85,7 @@ def collect_dataset_experiment_results(ray_task_list: list):
     return res_df
 
 
-def ray_init(cpu_num: int, is_local_mode: bool):
-    """
-    Initialize multiprocess. Every trainset size in a separate process
-    :param cpu_num: NUmber of cpu to use. -1 to use all available
-    :param is_local_mode: whether to run in the local computer. Used for debug.
-    :return:
-    """
-    cpu_count = psutil.cpu_count()
-    cpu_to_use = cpu_num if cpu_num > 0 else cpu_count
-    cpu_to_use = cpu_to_use if is_local_mode is False else 1
-    logger.info('cpu_count={}. Executing on {}. is_local_mode={}'.format(cpu_count, cpu_to_use, is_local_mode))
-    ray.init(local_mode=is_local_mode, num_cpus=cpu_to_use)
-
-
-@hydra.main(config_name='../configs/real_data.yaml')
+@hydra.main(config_path='../configs', config_name="uci_experiment")
 def execute_real_datasets_experiment(cfg):
     t0 = time.time()
     logger.info(cfg.pretty())

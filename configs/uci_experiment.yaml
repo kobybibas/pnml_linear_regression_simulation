@@ -1,11 +1,11 @@
 data_dir: ../data/UCI_Datasets  # directory to store the downloaded data in
-n_trails: 1                     # Number of repetition per experiment. Each with different random initialization
 trainset_sizes: []              # Number of trainset sizes to eval. if empty use default
 fast_dev_run: false
 
 # Preprocess param
 is_standardize_features: true
 is_add_bias_term: true
+is_normalize_data: true
 
 # Machine params
 is_local_mode: false            # Whether to use ray debug mode: using only 1 cpu.
