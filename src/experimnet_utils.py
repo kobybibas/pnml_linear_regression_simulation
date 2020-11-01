@@ -65,4 +65,5 @@ def execute_x_test(x_test: float, data_h: DataBase, pnml_h: Pnml, analytical_pnm
     return {'x_test': x_test, 'nf': nf, 'regret': regret, 'y_hat_erm': y_hat_erm,
             'analytical_nf': analytical_nf, 'analytical_regret': analytical_regret,
             'nf0': analytical_pnml_h.nf0, 'nf1': analytical_pnml_h.nf1, 'nf2': analytical_pnml_h.nf2,
+            'x_bot_square': analytical_pnml_h.x_bot_square,
             'trainset_size': trainset_size, 'num_features': num_features}

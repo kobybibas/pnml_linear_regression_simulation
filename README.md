@@ -96,3 +96,14 @@ jupyter-notebook real_data.ipynb
 }
 ```
 
+
+
+# TODO
+
+- [ ] Deal with warnings in real data (adatpive interval).
+
+- [ ] See what is wrong with naval-propulsion-plant.
+- [ ] pNML min norm: num feautres=4, missing a bump.
+
+
+
