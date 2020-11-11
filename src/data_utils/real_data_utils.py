@@ -1,6 +1,7 @@
 import logging
 import os.path as osp
 import time
+from glob import glob
 
 import numpy as np
 import numpy.linalg as npl
@@ -12,6 +13,8 @@ from learner_utils.analytical_pnml_utils import calc_analytical_pnml_performance
 from learner_utils.mdl_utils import calc_mdl_performance
 from learner_utils.minimum_norm_utils import calc_mn_learner_performance
 from learner_utils.pnml_real_data_helper import calc_empirical_pnml_performance, calc_genie_performance
+
+logger = logging.getLogger(__name__)
 
 
 def create_trainset_sizes_to_eval(trainset_sizes: list, n_train: int, n_features: int) -> list:
@@ -49,6 +52,20 @@ def standardize_features(x_train: np.ndarray, x_val: np.ndarray, x_test: np.ndar
     return x_train_stand, x_val_stand, x_test_stand
 
 
+def get_available_train_test_splits(dataset_name: str, data_dir: str) -> np.ndarray:
+    # Initialize output
+    splits = []
+
+    # Existing files
+    paths = glob(osp.join(data_dir, dataset_name, 'data', f'index_train_*.txt'))
+
+    # For each file name, extract its split num.
+    for path in paths:
+        split = int(path.split('_')[-1][:-4])  # Get split number
+        splits.append(split)
+    return np.sort(splits)
+
+
 def get_uci_data(dataset_name: str, data_dir: str, train_test_split_num: int,
                  is_standardize_features: bool = True, is_add_bias_term: bool = True, is_normalize_data: bool = True):
     data_txt_path = osp.join(data_dir, dataset_name, 'data', 'data.txt')
@@ -65,8 +82,8 @@ def get_uci_data(dataset_name: str, data_dir: str, train_test_split_num: int,
 
     # Load split file
     index_train_path = osp.join(data_dir, dataset_name, 'data', f'index_train_{train_test_split_num}.txt')
-    index_train = np.loadtxt(index_train_path).astype(int)
     index_test_path = osp.join(data_dir, dataset_name, 'data', f'index_test_{train_test_split_num}.txt')
+    index_train = np.loadtxt(index_train_path).astype(int)
     index_test = np.loadtxt(index_test_path).astype(int)
 
     # Train-test split
@@ -152,11 +169,12 @@ def execute_trail(x_train: np.ndarray, y_train: np.ndarray,
     debug_print and logger.info('calc_genie_performance in {:.3f} sec. x_train.shape={}'.format(time.time() - t1,
                                                                                                 x_train.shape))
 
-    # MDL
-    t1 = time.time()
-    mdl_df = calc_mdl_performance(x_train, y_train, x_val, y_val, x_test, y_test, mn_valset_var)
-    df_list.append(mdl_df)
-    debug_print and logger.info('calc_mdl_performance in {:.3f} sec'.format(time.time() - t1))
+    if False:
+        # MDL
+        t1 = time.time()
+        mdl_df = calc_mdl_performance(x_train, y_train, x_val, y_val, x_test, y_test, mn_valset_var)
+        df_list.append(mdl_df)
+        debug_print and logger.info('calc_mdl_performance in {:.3f} sec'.format(time.time() - t1))
 
     res_df = pd.concat(df_list, axis=1, sort=False)
     res_df['test_idx'] = res_df.index

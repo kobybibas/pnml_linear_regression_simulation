@@ -16,7 +16,7 @@ dataset_name: bostonHousing
 # concrete
 # energy
 # kin8nm
-# naval-propulsion-plant # todo: this producing a lot of prints
+# naval-propulsion-plant
 # power-plant
 # protein-tertiary-structure
 # wine-quality-red
@@ -30,12 +30,13 @@ optimization_dict:
     max_iter: 1e4
 
 
-train_test_split_num: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 ,18 ,19]
+# Define specific train-test split. If none is given all splits are executed
+train_test_split_num: []
 
 hydra:
   run:
     # Output directory
-    dir: ../output/uci_experiment_${now:%Y%m%d_%H%m%S}
+    dir: ../output/uci_experiment_${dataset_name}_${now:%Y%m%d_%H%m%S}
   sweep:
     dir: ../output/
-    subdir: uci_experiment_${now:%Y%m%d_%H%m%S}_${hydra.job.num}
+    subdir: uci_experiment_${dataset_name}_${now:%Y%m%d_%H%m%S}_${hydra.job.num}

@@ -16,10 +16,12 @@ class AnalyticalPNML:
         # Calc constants
         self.n, self.m = phi_train.shape
         self.u, self.h_square, _ = np.linalg.svd(phi_train.T @ phi_train, full_matrices=True)
-        self.n_effective = self.calc_effective_trainset_size(self.h_square, self.n, eigenvalue_threshold)
+        self.rank = min(self.n, self.m)
+        self.rank_effective = self.calc_effective_trainset_size(self.h_square, self.rank, eigenvalue_threshold)
         self.is_overparam = self.m >= self.n
-        if self.n != self.n_effective:
-            logger.info('The effective rank is different: [n n_effective]=[{} {}]'.format(self.n, self.n_effective))
+        if self.rank != self.rank_effective:
+            logger.info('The effective rank is different: [rank effective]=[{} {}]. [m n]=[{} {}]'.format(
+                self.rank, self.rank_effective, self.n, self.m))
 
         # Learn-able parameters intermediate results
         self.theta_mn_P_N_theta_mn = self.calc_trainset_subspace_projection(theta_erm)
@@ -27,16 +29,16 @@ class AnalyticalPNML:
         self.nf0, self.nf1, self.nf2, self.x_bot_square = 0, 0, 0, 0
 
     @staticmethod
-    def calc_effective_trainset_size(h_square: np.ndarray, n_trainset: int, eigenvalue_threshold: float) -> int:
+    def calc_effective_trainset_size(h_square: np.ndarray, rank: int, eigenvalue_threshold: float) -> int:
         """
         Calculate the effective dimension of the training set.
         :param h_square: the singular values of the trainset correlation matrix
-        :param n_trainset: the training set size
+        :param rank: the training set size
         :param eigenvalue_threshold: the smallest eigenvalue that is allowed
         :return: The effective dim
         """
-        n_effective = min(np.sum(h_square > eigenvalue_threshold), n_trainset)
-        return int(n_effective)
+        rank_effective = min(np.sum(h_square > eigenvalue_threshold), rank)
+        return int(rank_effective)
 
     def calc_norm_factor(self, phi_test: np.ndarray, sigma_square: float) -> float:
         """
@@ -69,12 +71,12 @@ class AnalyticalPNML:
         return float(nf)
 
     def calc_x_bot_square(self, x: np.ndarray) -> float:
-        x_bot_square = np.sum(np.power(self.u.T @ x, 2)[self.n_effective:])
+        x_bot_square = np.sum(np.power(self.u.T @ x, 2)[self.rank_effective:])
         return float(x_bot_square)
 
     def calc_trainset_subspace_projection(self, x: np.ndarray) -> float:
-        x_projection = np.squeeze(np.power(self.u.T @ x, 2))[:self.n_effective]
-        x_parallel_square = np.sum(x_projection / self.h_square[:self.n_effective])
+        x_projection = np.squeeze(np.power(self.u.T @ x, 2))[:self.rank_effective]
+        x_parallel_square = np.sum(x_projection / self.h_square[:self.rank_effective])
         return float(x_parallel_square)
 
     def calc_under_param_norm_factor(self, phi_test: np.ndarray) -> float:

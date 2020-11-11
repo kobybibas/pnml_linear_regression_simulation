@@ -27,6 +27,12 @@ def calc_empirical_pnml_performance(x_train: np.ndarray, y_train: np.ndarray, x_
     best_vars = []
     for i, (x_i, y_i) in enumerate(zip(x_val, y_val)):
         t0 = time.time()
+
+        # Set interval edges: using default sigma square
+        y_end = pnml_h.find_y_interval_edges(x_i)
+        pnml_h.create_y_interval(y_end=y_end)
+
+        # Find best sigma square
         best_var = pnml_h.optimize_variance(x_i, y_i)
         best_vars.append(best_var)
 
@@ -44,6 +50,12 @@ def calc_empirical_pnml_performance(x_train: np.ndarray, y_train: np.ndarray, x_
     nfs, success_list = [], []
     for j, x_j in enumerate(x_test):
         t0 = time.time()
+
+        # Set interval edges
+        y_end = pnml_h.find_y_interval_edges(x_j, valset_mean_var)
+        pnml_h.create_y_interval(y_end=y_end)
+
+        # cal normalization factor (nf)
         nf = pnml_h.calc_norm_factor(x_j, valset_mean_var)
         nfs.append(nf)
 

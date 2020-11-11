@@ -36,7 +36,7 @@ python main_synthetic_data.py --config-name pnml_polynomial model_degree=6; \
 python main_synthetic_data.py --config-name pnml_polynomial model_degree=8;  
 ```
 
-Visaulize:
+Visualize:
 
 ```bash
 cd notebook
@@ -56,7 +56,7 @@ python main_synthetic_data.py --config-name pnml_min_norm_fourier model_degree=5
 python main_synthetic_data.py --config-name pnml_min_norm_fourier model_degree=100; 
 ```
 
-Visaulize:
+Visualize:
 
 ```bash
 cd notebook
@@ -67,16 +67,18 @@ jupyter-notebook pnml_min_norm.ipynb
 
 ```bash
 cd src
-python main_real_data.py --config-name uci_experiment  dataset_name=bostonHousing ; \
-python main_real_data.py --config-name uci_experiment  dataset_name=concrete; \
-python main_real_data.py --config-name uci_experiment  dataset_name=energy; \
-python main_real_data.py --config-name uci_experiment  dataset_name=kin8nm; \
-python main_real_data.py --config-name uci_experiment  dataset_name=naval-propulsion-plant; \
-python main_real_data.py --config-name uci_experiment  dataset_name=wine-quality-red;
+python main_real_data.py --config-name uci_experiment dataset_name=bostonHousing; \
+python main_real_data.py --config-name uci_experiment dataset_name=concrete; \
+python main_real_data.py --config-name uci_experiment dataset_name=energy; \
+python main_real_data.py --config-name uci_experiment dataset_name=kin8nm; \
+python main_real_data.py --config-name uci_experiment dataset_name=naval-propulsion-plant; \
+python main_real_data.py --config-name uci_experiment dataset_name=power-plant; \
+python main_real_data.py --config-name uci_experiment dataset_name=wine-quality-red; \
+python main_real_data.py --config-name uci_experiment dataset_name=yacht;
 
 ```
 
-Visaulize:
+Visualize:
 
 ```bash
 cd notebook
@@ -100,10 +102,9 @@ jupyter-notebook real_data.ipynb
 
 # TODO
 
-- [ ] Deal with warnings in real data (adatpive interval).
-
+- [ ] Deal with warnings in real data (adaptive interval).
 - [ ] See what is wrong with naval-propulsion-plant.
-- [ ] pNML min norm: num feautres=4, missing a bump.
+- [ ] pNML min norm: num features=4, missing a bump.
 
 
 

@@ -48,9 +48,8 @@ class Pnml:
 
         # The interval for possible y, for creating pdf
         self.is_y_one_sided_interval = is_one_sided_interval
-        self.y_to_eval = np.append(0, np.logspace(-16, 6, 1000))
-        if self.is_y_one_sided_interval is False:
-            self.y_to_eval = np.unique(np.append(self.y_to_eval, -self.y_to_eval))
+        self.y_to_eval = None
+        self.create_y_interval()
 
         # Train feature matrix and labels
         self.phi_train = phi_train
@@ -68,6 +67,29 @@ class Pnml:
         # Indication of success or fail
         self.res_dict = None
         self.debug_dict = {}
+
+    def create_y_interval(self, y_start:float=10 ** -16, y_end:float=10 ** 6):
+        # The interval for possible y, for creating pdf
+        self.y_to_eval = np.append(0, np.logspace(np.log10(y_start), np.log10(y_end), 1000))
+        if self.is_y_one_sided_interval is False:
+            self.y_to_eval = np.unique(np.append(self.y_to_eval, -self.y_to_eval))
+
+    def find_y_interval_edges(self, phi_test, sigma_square: float = None) -> float:
+        if sigma_square is None:
+            sigma_square = self.sigma_square
+
+        # Find the minimum largest y that gives prob 0
+        prob, y_to_eval, = 1.0, 0.1
+        while prob > np.finfo('float').eps:
+            y_to_eval *= 10
+            y_vec = self.create_y_vec_to_eval(phi_test, self.theta_erm, y_to_eval)[None]
+            thetas = self.calc_genie_thetas(phi_test, y_vec)
+
+            # Calc genies predictions
+            probs_of_genies = self.calc_probs_of_genies(phi_test, y_vec, thetas, sigma_square)
+            prob = probs_of_genies
+        y_max = y_to_eval
+        return y_max
 
     def fit_least_squares_estimator(self, phi_arr: np.ndarray, y: np.ndarray):
         return fit_least_squares_estimator(phi_arr, y, lamb=self.lamb)
@@ -102,8 +124,7 @@ class Pnml:
         self.res_dict = res_dict
         return norm_factor
 
-    @staticmethod
-    def verify_empirical_pnml_results(norm_factor: float, probs_of_genies: np.ndarray) -> dict:
+    def verify_empirical_pnml_results(self, norm_factor: float, probs_of_genies: np.ndarray) -> dict:
         res_dict = {'message': '', 'success': True}
 
         # Some check for converges:
@@ -115,6 +136,10 @@ class Pnml:
             # Expected probability 0 at the edges
             res_dict['message'] += 'Interval is too small prob={}. '.format(probs_of_genies[-1])
             res_dict['success'] = False
+
+        if res_dict['success'] is False:
+            y_start, y_end = self.y_to_eval[0], self.y_to_eval[-1]
+            res_dict['message'] += f'[y_start, y_end]=[{y_start} {y_end}] '
         return res_dict
 
     @staticmethod
