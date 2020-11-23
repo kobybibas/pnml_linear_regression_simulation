@@ -9,7 +9,7 @@ import numpy as np
 from data_utils.synthetic_data_utils import data_type_dict
 from experimnet_utils import execute_x_vec
 from learner_utils.analytical_pnml_utils import AnalyticalPNML
-from learner_utils.pnml_utils import Pnml, PnmlMinNorm
+from learner_utils.pnml_utils import BasePNML, BasePNMLMinNorm
 from ray_utils import ray_init
 
 logger = logging.getLogger(__name__)
@@ -32,10 +32,9 @@ def execute_experiment(cfg):
 
     # Build pNML
     if cfg.pnml_type == 'pnml':
-        pnml_h = Pnml(phi_train, y_train, lamb=cfg.lamb, sigma_square=cfg.sigma_square)
+        pnml_h = BasePNML(phi_train, y_train, lamb=cfg.lamb, var=cfg.sigma_square)
     elif cfg.pnml_type == 'pnml_min_norm':
-        pnml_h = PnmlMinNorm(cfg.constrain_factor, cfg.pnml_lambda_optim_dict, phi_train, y_train,
-                             lamb=0.0, sigma_square=cfg.sigma_square)
+        pnml_h = BasePNMLMinNorm(cfg.pnml_lambda_optim_dict, phi_train, y_train, lamb=0.0, sigma_square=cfg.sigma_square)
     else:
         raise ValueError(f'pnml_type not supported {cfg.pnml_type}')
     analytical_pnml_h = AnalyticalPNML(phi_train, pnml_h.theta_erm)

@@ -4,123 +4,178 @@ import time
 import numpy as np
 import pandas as pd
 
-from learner_utils.learner_helpers import calc_logloss, calc_mse, calc_theta_norm, fit_least_squares_estimator
-from learner_utils.optimization_utils import fit_norm_constrained_least_squares
-from learner_utils.pnml_utils import Pnml, PnmlMinNorm, compute_pnml_logloss, add_test_to_train
+from learner_utils.learner_helpers import fit_least_squares_estimator, calc_best_var
+from learner_utils.overparam_pnml_utils import OverparamPNML
+from learner_utils.underparam_pnml_utils import UnderparamPNML
+
+logger_default = logging.getLogger(__name__)
 
 
-def calc_empirical_pnml_performance(x_train: np.ndarray, y_train: np.ndarray, x_val: np.ndarray, y_val: np.ndarray,
-                                    x_test: np.ndarray, y_test: np.ndarray,
-                                    pnml_lambda_optim_dict: dict) -> pd.DataFrame:
-    logger = logging.getLogger(__name__)
-    n_train, n_features = x_train.shape
+def choose_pnml_h_type(pnml_handlers, x_i, x_bot_square_threshold):
+    overparam_pnml_h = pnml_handlers['overparam']
+    underparam_pnml_h = pnml_handlers['underparam']
+    assert isinstance(overparam_pnml_h, OverparamPNML)
+    assert isinstance(underparam_pnml_h, UnderparamPNML)
 
-    # Initialize pNML
-    n_train_effective = n_train + 1  # We add the test sample data to training
-    if n_train_effective > n_features:
-        pnml_h = Pnml(phi_train=x_train, y_train=y_train, lamb=0.0)
+    x_norm_square = np.linalg.norm(x_i) ** 2
+    if overparam_pnml_h.rank >= overparam_pnml_h.m:
+        pnml_h = underparam_pnml_h
+        x_bot_square = 0.0
     else:
-        pnml_h = PnmlMinNorm(constrain_factor=1.0, pnml_lambda_optim_dict=pnml_lambda_optim_dict,
-                             phi_train=x_train, y_train=y_train, lamb=0.0)
+        x_bot_square = overparam_pnml_h.calc_x_bot_square(x_i)
+        pnml_h = overparam_pnml_h if x_bot_square / x_norm_square > x_bot_square_threshold else underparam_pnml_h
+    return pnml_h, x_bot_square, x_norm_square
+
+
+def optimize_pnml_var_on_valset(pnml_handlers: dict, x_val, y_val, split_num: int,
+                                x_bot_square_threshold=np.finfo('float').eps,
+                                logger=logger_default) -> float:
+    overparam_pnml_h = pnml_handlers['overparam']
+    underparam_pnml_h = pnml_handlers['underparam']
+    assert isinstance(overparam_pnml_h, OverparamPNML)
+    assert isinstance(underparam_pnml_h, UnderparamPNML)
 
     # Compute best variance using validation set
-    best_vars = []
+    var_best_list = []
     for i, (x_i, y_i) in enumerate(zip(x_val, y_val)):
         t0 = time.time()
+        nf, loss = -1, -1
 
-        # Set interval edges: using default sigma square
-        y_end = pnml_h.find_y_interval_edges(x_i)
-        pnml_h.create_y_interval(y_end=y_end)
+        # Check projection on orthogonal subspace
+        pnml_h, x_bot_square, x_norm_square = choose_pnml_h_type(pnml_handlers, x_i, x_bot_square_threshold)
 
         # Find best sigma square
-        best_var = pnml_h.optimize_variance(x_i, y_i)
-        best_vars.append(best_var)
+        pnml_h.reset()
+        var_best = pnml_h.optimize_var(x_i, y_i)
+        success, msg = pnml_h.verify_var_results()
+
+        # Further check if optimize succeed
+        if success is True:
+            pnml_h.var = var_best
+            nf = pnml_h.calc_norm_factor(x_i)
+            success, msg = pnml_h.verify_pnml_results()
+            loss = pnml_h.calc_pnml_logloss(x_i, y_i, nf) if success else -1
+
+            if success is True:
+                var_best_list.append(var_best)
 
         # msg
-        msg = '[{:03d}/{}] \t {:.1f} sec. x_train.shape={} \t best_var={}'.format(
-            i, len(x_val) - 1, time.time() - t0, pnml_h.phi_train.shape, best_var)
-        logger.info(msg)
-    valset_mean_var = np.mean(best_vars)
+        log = '[{:03d}/{}] pNML Val: split={:02d} shape={}\t '.format(
+            i, len(x_val) - 1, split_num, pnml_h.x_arr_train.shape)
+        log += '[nf loss var]=[{:.6f} {:.6f} {:.6f}] '.format(
+            nf, loss, pnml_h.var)
+        log += '[|x|^2 |x_bot|^2]=[{:.6f} {:.6f}] '.format(
+            x_norm_square, x_bot_square)
+        log += 'success={}. {:.2f}s. {}'.format(success, time.time() - t0, msg)
+        if success is True:
+            logger.info(log)
+        else:
+            logger.warning(log)
 
-    # Test set genies for logloss
-    theta_erm = fit_least_squares_estimator(x_train, y_train, lamb=0.0)
-    theta_test_genies = fit_genies_to_dataset(x_train, y_train, x_test, y_test, theta_erm)
+    var_best_mean = np.mean(var_best_list)
+    return var_best_mean
 
-    # Execute on test set
-    nfs, success_list = [], []
-    for j, x_j in enumerate(x_test):
+
+def calc_pnml_testset_performance(pnml_handlers: dict, x_test: np.ndarray, y_test: np.ndarray,
+                                  split_num: int,
+                                  x_bot_square_threshold=np.finfo('float').eps,
+                                  logger=logger_default) -> pd.DataFrame:
+    overparam_pnml_h = pnml_handlers['overparam']
+    underparam_pnml_h = pnml_handlers['underparam']
+    assert isinstance(overparam_pnml_h, OverparamPNML)
+    assert isinstance(underparam_pnml_h, UnderparamPNML)
+
+    nfs, losses, success_list = [], [], []
+    loss_genies, x_bot_square_list, x_norm_square_list = [], [], []
+    analytical_nfs = []
+    for i, (x_i, y_i) in enumerate(zip(x_test, y_test)):
         t0 = time.time()
 
-        # Set interval edges
-        y_end = pnml_h.find_y_interval_edges(x_j, valset_mean_var)
-        pnml_h.create_y_interval(y_end=y_end)
+        # Check projection on orthogonal subspace
+        pnml_h, x_bot_square, x_norm_square = choose_pnml_h_type(pnml_handlers, x_i, x_bot_square_threshold)
+        x_norm_square_list.append(x_norm_square)
 
-        # cal normalization factor (nf)
-        nf = pnml_h.calc_norm_factor(x_j, valset_mean_var)
+        # calc normalization factor (nf)
+        pnml_h.reset()
+        nf = pnml_h.calc_norm_factor(x_i)
+        loss = pnml_h.calc_pnml_logloss(x_i, y_i, nf)
+        success, msg = pnml_h.verify_pnml_results()
         nfs.append(nf)
-
-        # msg
-        pnml_h_res_dict = pnml_h.res_dict
-        message, success = pnml_h_res_dict['message'], pnml_h_res_dict['success']
-        msg = '[{:03d}/{}] \t nf={:.8f}. \t {:.1f} sec. x_train.shape={} \t success={}. {}'.format(
-            j, len(x_test) - 1, nf, time.time() - t0, pnml_h.phi_train.shape, success, message)
+        x_bot_square_list.append(x_bot_square)
+        losses.append(loss)
         success_list.append(success)
-        if success is True:
-            logger.info(msg)
-        else:
-            logger.warning(msg)
 
-    regrets = np.log(nfs).tolist()
-    logloss = compute_pnml_logloss(x_test, y_test, theta_test_genies, valset_mean_var, nfs)
+        # Genie performance
+        loss_genie = pnml_h.calc_pnml_logloss(x_i, y_i, 1.0)
+        loss_genies.append(loss_genie)
+        if loss_genie > loss and nf > 1.0:
+            msg += 'loss genie>pnml: {}>{}. '.format(loss_genie, loss)
+            success = False
+
+        # analytical pnml
+        analytical_nf = pnml_h.calc_analytical_norm_factor(x_i)
+        analytical_nfs.append(analytical_nf)
+        # msg
+        log = '[{:03d}/{}] pNML Val: split={:02d} shape={}\t '.format(
+            i, len(x_test) - 1, split_num, pnml_h.x_arr_train.shape)
+        log += '[nf loss var]=[{:.6f} {:.6f} {:.6f}] '.format(
+            nf, loss, pnml_h.var)
+        log += '[|x|^2 |x_bot|^2]=[{:.6f} {:.6f}] '.format(
+            x_norm_square, x_bot_square)
+        log += 'success={}. {:.2f}s. {}'.format(success, time.time() - t0, msg)
+        if success is True:
+            logger.info(log)
+        else:
+            logger.warning(log)
 
     # Add to dict
-    res_dict = {'empirical_pnml_regret': regrets,
-                'empirical_pnml_test_logloss': logloss,
-                'empirical_pnml_variance': [valset_mean_var] * len(x_test),
-                'empirical_pnml_success': success_list}
+    res_dict = {'pnml_regret': np.log(nfs).tolist(),
+                'pnml_test_logloss': losses,
+                'pnml_variance': [pnml_h.var] * len(x_test),
+                'pnml_success': success_list,
+                'x_bot_square': x_bot_square_list,
+                'x_norm_square': x_norm_square_list,
+                'genie_test_logloss': loss_genies,
+                'analytical_pnml_regret': np.log(analytical_nfs)}
     df = pd.DataFrame(res_dict)
     return df
 
 
-def fit_genies_to_dataset(x_train: np.ndarray, y_train: np.ndarray,
-                          x_test: np.ndarray, y_test: np.ndarray, theta_erm: np.ndarray) -> list:
-    n_train, num_features = x_train.shape
+def calc_pnml_performance(x_train: np.ndarray, y_train: np.ndarray,
+                          x_val: np.ndarray, y_val: np.ndarray,
+                          x_test: np.ndarray, y_test: np.ndarray,
+                          split_num: int,
+                          pnml_optim_param: dict,
+                          logger=logger_default) -> pd.DataFrame:
+    # Initialize pNML
+    pnml_handlers = {'underparam': UnderparamPNML(x_arr_train=x_train, y_vec_train=y_train,
+                                                  var=pnml_optim_param['var_initial'], lamb=0.0, logger=logger),
+                     'overparam': OverparamPNML(x_arr_train=x_train, y_vec_train=y_train,
+                                                var=pnml_optim_param['var_initial'], lamb=0.0, logger=logger,
+                                                pnml_optim_param=pnml_optim_param)}
 
-    theta_genies = []
-    for x_test_i, y_test_i in zip(x_test, y_test):
+    # Initialize pNML with ERM var.
+    theta_erm = fit_least_squares_estimator(x_train, y_train)
+    var_erm = calc_best_var(x_val, y_val, theta_erm)
+    pnml_handlers['underparam'].var = var_erm
+    pnml_handlers['underparam'].var_input = var_erm
+    pnml_handlers['overparam'].var = var_erm
+    pnml_handlers['overparam'].var_input = var_erm
+    x_bot_square_threshold = pnml_optim_param['x_bot_square_threshold']
 
-        # Add test to train
-        phi_arr, y = add_test_to_train(x_train, x_test_i), np.append(y_train, y_test_i)
-        assert phi_arr.shape[0] == len(y)
+    # Compute best variance using validation set
+    valset_mean_var = optimize_pnml_var_on_valset(pnml_handlers, x_val, y_val, split_num,
+                                                  x_bot_square_threshold,
+                                                  logger)
 
-        n_train_effective = n_train + 1  # We add the test sample data to training , therefore +1
-        if n_train_effective > num_features:
-            # Fit under param region
-            theta_genie_i = fit_least_squares_estimator(phi_arr, y, lamb=0.0)
-        else:
-            # Fit over param region
-            constrain = calc_theta_norm(theta_erm)
-            theta_genie_i, lamb = fit_norm_constrained_least_squares(phi_arr, y, constrain)
+    # Assign best var
+    pnml_handlers['underparam'].var = valset_mean_var
+    pnml_handlers['underparam'].var_input = valset_mean_var
+    pnml_handlers['overparam'].var = valset_mean_var
+    pnml_handlers['overparam'].var_input = valset_mean_var
 
-        theta_genies.append(theta_genie_i)
-    return theta_genies
-
-
-def calc_genie_performance(x_train: np.ndarray, y_train: np.ndarray,
-                           x_test: np.ndarray, y_test: np.ndarray,
-                           theta_erm: np.ndarray, variances: list) -> pd.DataFrame:
-    # Fit genie to dataset
-    theta_test_genies = fit_genies_to_dataset(x_train, y_train, x_test, y_test, theta_erm)
-
-    # Metric
-    test_logloss = [float(calc_logloss(x, y, theta_i, var_i)) for x, y, theta_i, var_i in
-                    zip(x_test, y_test, theta_test_genies, variances)]
-    test_mse = [float(calc_mse(x, y, theta_i)) for x, y, theta_i in zip(x_test, y_test, theta_test_genies)]
-    theta_norm = [calc_theta_norm(theta_i) for theta_i in theta_test_genies]
-
-    res_dict = {f'genie_test_mse': test_mse,
-                f'genie_test_logloss': test_logloss,
-                f'genie_theta_norm': theta_norm,
-                f'genie_variance': variances}
-    df = pd.DataFrame(res_dict)
+    # Execute on test set
+    df = calc_pnml_testset_performance(pnml_handlers, x_test, y_test, split_num,
+                                       x_bot_square_threshold,
+                                       logger)
     return df

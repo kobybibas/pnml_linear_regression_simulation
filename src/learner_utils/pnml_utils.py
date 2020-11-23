@@ -1,32 +1,12 @@
 import logging
+from abc import ABCMeta, abstractmethod
 
 import numpy as np
+import numpy.linalg as npl
 
-from learner_utils.learner_helpers import calc_theta_norm, fit_least_squares_estimator
-from learner_utils.optimization_utils import fit_norm_constrained_least_squares
-from learner_utils.optimization_utils import optimize_pnml_var
+from learner_utils.learner_helpers import fit_least_squares_estimator
 
-logger = logging.getLogger(__name__)
-
-
-def add_test_to_train(phi_train: np.ndarray, phi_test: np.ndarray) -> np.ndarray:
-    """
-    Add the test set feature to training set feature matrix
-    :param phi_train: training set feature matrix.
-    :param phi_test: test set feature.
-    :return: concat train and test.
-    """
-    # Make the input as row vector
-    if len(phi_test.shape) == 1:
-        phi_test = np.expand_dims(phi_test, 0)
-
-    # convert test to row vector if needed
-    if phi_test.shape[0] == phi_train.shape[1]:
-        phi_test = phi_test.T
-
-    # Concat train and test
-    phi_arr = np.concatenate((phi_train, phi_test), axis=0)
-    return phi_arr
+logger_default = logging.getLogger(__name__)
 
 
 def compute_pnml_logloss(phi_arr: np.ndarray, y_gt: np.ndarray, theta_genies: np.ndarray, var_list: list,
@@ -41,174 +21,101 @@ def compute_pnml_logloss(phi_arr: np.ndarray, y_gt: np.ndarray, theta_genies: np
     return logloss
 
 
-class Pnml:
-    def __init__(self, phi_train: np.ndarray, y_train: np.ndarray,
-                 lamb: float = 0.0, sigma_square: float = 1e-3,
-                 is_one_sided_interval: bool = True):
-
-        # The interval for possible y, for creating pdf
-        self.is_y_one_sided_interval = is_one_sided_interval
-        self.y_to_eval = None
-        self.create_y_interval()
+class BasePNML:
+    def __init__(self, x_arr_train: np.ndarray, y_vec_train: np.ndarray, lamb: float = 0.0, var: float = 1e-1,
+                 logger=logger_default):
+        __metaclass__ = ABCMeta
+        assert x_arr_train.shape[0] == y_vec_train.shape[0]
 
         # Train feature matrix and labels
-        self.phi_train = phi_train
-        self.y_train = y_train
+        self.x_arr_train = x_arr_train
+        self.y_vec_train = y_vec_train
 
         # Regularization term
         self.lamb = lamb
 
         # Default variance
-        self.sigma_square = sigma_square
+        self.var_input = var
+        self.var = var
 
         # ERM least squares parameters
-        self.theta_erm = fit_least_squares_estimator(self.phi_train, self.y_train, lamb=self.lamb)
+        self.n, self.m = self.x_arr_train.shape
+        self.rank = min(self.m, self.n)
+        self.u, self.h, self.vt = npl.svd(self.x_arr_train.T)
+        self.h_square = self.h ** 2
+        self.theta_erm = fit_least_squares_estimator(self.x_arr_train, self.y_vec_train, lamb=self.lamb)
+        self.rank = np.sum(self.h > np.finfo('float').eps)
 
         # Indication of success or fail
-        self.res_dict = None
-        self.debug_dict = {}
+        self.intermediate_dict = {}
+        self.logger = logger
 
-    def create_y_interval(self, y_start:float=10 ** -16, y_end:float=10 ** 6):
-        # The interval for possible y, for creating pdf
-        self.y_to_eval = np.append(0, np.logspace(np.log10(y_start), np.log10(y_end), 1000))
-        if self.is_y_one_sided_interval is False:
-            self.y_to_eval = np.unique(np.append(self.y_to_eval, -self.y_to_eval))
+    def reset(self):
+        self.intermediate_dict = {}
+        self.var = self.var_input
 
-    def find_y_interval_edges(self, phi_test, sigma_square: float = None) -> float:
-        if sigma_square is None:
-            sigma_square = self.sigma_square
+    @abstractmethod
+    def optimize_var(self, x_test: np.ndarray, y_gt: float) -> (float, float):
+        pass
 
-        # Find the minimum largest y that gives prob 0
-        prob, y_to_eval, = 1.0, 0.1
-        while prob > np.finfo('float').eps:
-            y_to_eval *= 10
-            y_vec = self.create_y_vec_to_eval(phi_test, self.theta_erm, y_to_eval)[None]
-            thetas = self.calc_genie_thetas(phi_test, y_vec)
+    @abstractmethod
+    def calc_norm_factor(self, x_test: np.array) -> float:
+        pass
 
-            # Calc genies predictions
-            probs_of_genies = self.calc_probs_of_genies(phi_test, y_vec, thetas, sigma_square)
-            prob = probs_of_genies
-        y_max = y_to_eval
-        return y_max
-
-    def fit_least_squares_estimator(self, phi_arr: np.ndarray, y: np.ndarray):
-        return fit_least_squares_estimator(phi_arr, y, lamb=self.lamb)
-
-    def predict_erm(self, phi_test: np.ndarray) -> float:
-        return float(self.theta_erm.T @ phi_test)
-
-    def calc_norm_factor(self, phi_test: np.array, sigma_square=None) -> float:
+    def add_test_to_train(self, x_arr_train: np.ndarray, x_test: np.ndarray,
+                          y_train_vec: np.ndarray, y_test: float) -> (np.ndarray, np.ndarray):
         """
-        Calculate normalization factor using numerical integration
-        :param phi_test: test features to evaluate.
-        :param sigma_square: genie's variance.
-        :return: log normalization factor.
+        Add the test set feature to training set feature matrix
+        :param x_arr_train: training set feature matrix.
+        :param x_test: test set feature.
+        :param y_train_vec: training labels.
+        :param y_test: test label to add.
+        :return: concat train and test.
         """
-        self.debug_dict = {}
-        y_vec = self.create_y_vec_to_eval(phi_test, self.theta_erm, self.y_to_eval)
-        thetas = self.calc_genie_thetas(phi_test, y_vec)
+        x_test = self.convert_to_column_vec(x_test)
 
-        if sigma_square is None:
-            sigma_square = self.sigma_square
-
-        # Calc genies predictions
-        probs_of_genies = self.calc_probs_of_genies(phi_test, y_vec, thetas, sigma_square)
-
-        # Integrate to find the pNML normalization factor
-        norm_factor = float(np.trapz(probs_of_genies, x=y_vec))
-
-        if self.is_y_one_sided_interval is True:
-            norm_factor = 2 * norm_factor
-
-        res_dict = self.verify_empirical_pnml_results(norm_factor, probs_of_genies)
-        self.res_dict = res_dict
-        return norm_factor
-
-    def verify_empirical_pnml_results(self, norm_factor: float, probs_of_genies: np.ndarray) -> dict:
-        res_dict = {'message': '', 'success': True}
-
-        # Some check for converges:
-        if norm_factor < 1.0:
-            # Expected positive regret
-            res_dict['message'] += 'Negative regret={:.3f} '.format(np.log(norm_factor))
-            res_dict['success'] = False
-        if probs_of_genies[-1] > np.finfo('float').eps:
-            # Expected probability 0 at the edges
-            res_dict['message'] += 'Interval is too small prob={}. '.format(probs_of_genies[-1])
-            res_dict['success'] = False
-
-        if res_dict['success'] is False:
-            y_start, y_end = self.y_to_eval[0], self.y_to_eval[-1]
-            res_dict['message'] += f'[y_start, y_end]=[{y_start} {y_end}] '
-        return res_dict
+        # Concat train and test
+        x_arr = np.concatenate((x_arr_train, x_test.T), axis=0)
+        y_vec = np.append(y_train_vec.squeeze(), y_test)
+        assert x_arr.shape[0] == y_vec.shape[0]
+        return x_arr, y_vec
 
     @staticmethod
-    def create_y_vec_to_eval(phi_test: np.ndarray, theta_erm: np.ndarray, y_to_eval: np.ndarray) -> np.ndarray:
+    def convert_to_column_vec(x):
+        # Make the input as column vector
+        x_col = np.copy(x)
+        if len(x.shape) == 1:
+            x_col = np.expand_dims(x, 1)
+
+        # convert test to row vector if needed
+        if x.shape[0] == 1:
+            x_col = x.T
+        return x_col
+
+    @abstractmethod
+    def fit_least_squares_estimator(self, x_arr: np.ndarray, y_vec: np.ndarray, lamb: float) -> np.ndarray:
         """
-        Adapt the y interval to the test sample.
-        we want to predict around the ERM prediction based on the analytical result.
-        :param phi_test: the test sample data.
-        :param theta_erm: the erm parameters
-        :param y_to_eval: the basic y interval
-        :return: the shifted y interval based on the erm prediction
+        Override this.
+        :param x_arr: data matrix. Each row is a sample.
+        :param y_vec: label vector.
+        :param lamb: regularization term.
+        :return:
         """
-        y_pred = theta_erm.T @ phi_test
-        y_vec = y_to_eval + y_pred
-        return np.squeeze(y_vec)
+        pass
 
-    def calc_genie_thetas(self, phi_test: np.ndarray, y_vec: np.ndarray) -> list:
-        phi_arr = add_test_to_train(self.phi_train, phi_test)
-        thetas = [self.fit_least_squares_estimator(phi_arr, np.append(self.y_train, y)) for y in y_vec]
-        return thetas
+    def calc_pnml_logloss(self, x_test: np.ndarray, y_gt: float, nf: np.ndarray) -> float:
+        # Make the input as column vector
+        x_test = self.convert_to_column_vec(x_test)
+        var = self.var
 
-    @staticmethod
-    def calc_probs_of_genies(phi_test, y_trained: np.ndarray, thetas: np.ndarray, sigma_square: float) -> np.ndarray:
-        """
-        Calculate the genie probability of the label it was trained with
-        :param phi_test: test set sample
-        :param y_trained: The labels that the genie was trained with
-        :param thetas: The fitted parameters to the label (the trained genie)
-        :param sigma_square: the variance (sigma^2)
-        :return: the genie probability of the label it was trained with
-        """
-        y_hat = np.array([theta.T @ phi_test for theta in thetas]).squeeze()
-        y_trained = y_trained.squeeze()
-        probs_of_genies = np.exp(-(y_trained - y_hat) ** 2 / (2 * sigma_square)) / np.sqrt(2 * np.pi * sigma_square)
-        return probs_of_genies
+        # Add test to train
+        x_arr, y_vec = self.add_test_to_train(self.x_arr_train, x_test, self.y_vec_train, y_gt)
+        theta_genie = self.fit_least_squares_estimator(x_arr, y_vec, self.lamb)
+        logloss = 0.5 * np.log(2 * np.pi * var * (nf ** 2)) + (y_gt - theta_genie.T @ x_test) ** 2 / (
+                2 * var)
+        return float(logloss)
 
-    def optimize_variance(self, phi_test: np.ndarray, y_gt: float) -> float:
-
-        y_vec = self.create_y_vec_to_eval(phi_test, self.theta_erm, self.y_to_eval)
-        thetas = self.calc_genie_thetas(phi_test, y_vec)
-
-        phi_arr, ys = add_test_to_train(self.phi_train, phi_test), np.append(self.y_train, y_gt)
-        theta_genie = self.fit_least_squares_estimator(phi_arr, ys)
-
-        # Calc best sigma
-        epsilon_square_list = (y_vec - np.array([theta.T @ phi_test for theta in thetas]).squeeze()) ** 2
-        epsilon_square_true = (y_gt - theta_genie.T @ phi_test) ** 2
-        best_var = optimize_pnml_var(epsilon_square_true, epsilon_square_list, y_vec)
-        return best_var
-
-
-class PnmlMinNorm(Pnml):
-    def __init__(self, constrain_factor: float, pnml_lambda_optim_dict: dict, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        assert self.lamb == 0.0
-        self.pnml_lambda_optim_dict = pnml_lambda_optim_dict
-
-        # The norm constrain is set to: constrain_factor * ||\theta_MN||^2
-        self.constrain_factor = constrain_factor
-        self.max_norm = self.constrain_factor * calc_theta_norm(self.theta_erm)
-
-    def fit_least_squares_estimator(self, phi_arr: np.ndarray, y: np.ndarray) -> np.ndarray:
-        max_norm = self.max_norm
-        theta, lamb = fit_norm_constrained_least_squares(phi_arr, y, max_norm,
-                                                         self.pnml_lambda_optim_dict['tol_func'],
-                                                         self.pnml_lambda_optim_dict['tol_lamb'],
-                                                         self.pnml_lambda_optim_dict['max_iter'])
-
-        if 'fitted_lamb_list' not in self.debug_dict:
-            self.debug_dict['fitted_lamb_list'] = []
-        self.debug_dict['fitted_lamb_list'].append(lamb)
-        return theta
+    @abstractmethod
+    def verify_pnml_results(self) -> (bool, str):
+        success, msg = True, ''
+        return success, msg

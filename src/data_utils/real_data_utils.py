@@ -9,12 +9,10 @@ import pandas as pd
 import ray
 from sklearn.preprocessing import StandardScaler
 
-from learner_utils.analytical_pnml_utils import calc_analytical_pnml_performance
-from learner_utils.mdl_utils import calc_mdl_performance
 from learner_utils.minimum_norm_utils import calc_mn_learner_performance
-from learner_utils.pnml_real_data_helper import calc_empirical_pnml_performance, calc_genie_performance
+from learner_utils.pnml_real_data_helper import calc_pnml_performance
 
-logger = logging.getLogger(__name__)
+logger_default = logging.getLogger(__name__)
 
 
 def create_trainset_sizes_to_eval(trainset_sizes: list, n_train: int, n_features: int) -> list:
@@ -26,10 +24,11 @@ def create_trainset_sizes_to_eval(trainset_sizes: list, n_train: int, n_features
     :return: list of training set sizes.
     """
     if len(trainset_sizes) == 0:
-        trainset_sizes_over_param = np.arange(4, n_features + 1).astype(int)
-        trainset_sizes_under_param = np.logspace(np.log10(n_features + 1), np.log10(n_train), 10).astype(int)
+        min_trainset = 2
+        trainset_sizes_over_param = np.arange(min_trainset, n_features - 1).astype(int)
+        trainset_sizes_under_param = np.logspace(np.log10(n_features + 2), np.log10(n_train), 10).round()
         trainset_sizes = np.append(trainset_sizes_over_param, trainset_sizes_under_param)
-        trainset_sizes = np.unique(trainset_sizes)
+        trainset_sizes = np.unique(trainset_sizes).astype(int)
     return trainset_sizes
 
 
@@ -52,7 +51,7 @@ def standardize_features(x_train: np.ndarray, x_val: np.ndarray, x_test: np.ndar
     return x_train_stand, x_val_stand, x_test_stand
 
 
-def get_available_train_test_splits(dataset_name: str, data_dir: str) -> np.ndarray:
+def get_set_splits(dataset_name: str, data_dir: str) -> np.ndarray:
     # Initialize output
     splits = []
 
@@ -66,7 +65,33 @@ def get_available_train_test_splits(dataset_name: str, data_dir: str) -> np.ndar
     return np.sort(splits)
 
 
-def get_uci_data(dataset_name: str, data_dir: str, train_test_split_num: int,
+def choose_samples_for_debug(cfg, trainset: tuple, valset: tuple, testset: tuple) -> (tuple, tuple, tuple):
+    x_train, y_train = trainset
+    x_val, y_val = valset
+    x_test, y_test = testset
+
+    # reduce sets
+    if cfg.fast_dev_run is True:
+        x_train, y_train = x_train[:3, :], y_train[:3]
+        x_val, y_val = x_val[:2, :], y_val[:2]
+        x_test, y_test = x_test[:2, :], y_test[:2]
+
+    # choose specific test samples
+    if len(cfg.test_idxs) > 0:
+        x_test, y_test = x_test[cfg.test_idxs, :], y_test[cfg.test_idxs]
+
+    # choose specific val samples
+    if len(cfg.val_idxs) > 0:
+        x_val, y_val = x_val[cfg.val_idxs, :], y_val[cfg.val_idxs]
+
+    # Reduce test set size: increasing execution speed
+    if cfg.max_test_samples > 0:
+        x_test, y_test = x_test[:cfg.max_test_samples, :], y_test[:cfg.max_test_samples]
+
+    return (x_train, y_train), (x_val, y_val), (x_test, y_test)
+
+
+def get_uci_data(dataset_name: str, data_dir: str, split: int,
                  is_standardize_features: bool = True, is_add_bias_term: bool = True, is_normalize_data: bool = True):
     data_txt_path = osp.join(data_dir, dataset_name, 'data', 'data.txt')
     data = np.loadtxt(data_txt_path)
@@ -81,8 +106,8 @@ def get_uci_data(dataset_name: str, data_dir: str, train_test_split_num: int,
     y_all = data[:, int(index_target.tolist())]
 
     # Load split file
-    index_train_path = osp.join(data_dir, dataset_name, 'data', f'index_train_{train_test_split_num}.txt')
-    index_test_path = osp.join(data_dir, dataset_name, 'data', f'index_test_{train_test_split_num}.txt')
+    index_train_path = osp.join(data_dir, dataset_name, 'data', f'index_train_{split}.txt')
+    index_test_path = osp.join(data_dir, dataset_name, 'data', f'index_test_{split}.txt')
     index_train = np.loadtxt(index_train_path).astype(int)
     index_test = np.loadtxt(index_test_path).astype(int)
 
@@ -95,7 +120,7 @@ def get_uci_data(dataset_name: str, data_dir: str, train_test_split_num: int,
     x_val, y_val = x_train[num_training_examples:, :], y_train[num_training_examples:]
     x_train, y_train = x_train[:num_training_examples, :], y_train[:num_training_examples]
 
-    x_val, y_val = x_val[:100, :], y_val[:100]  # Maximum of 100 validation samples
+    x_val, y_val = x_val[:200, :], y_val[:200]  # Maximum of 100 validation samples
     if is_standardize_features is True:
         # Apply standardization on numerical features
         x_train, x_val, x_test = standardize_features(x_train, x_val, x_test)
@@ -103,39 +128,97 @@ def get_uci_data(dataset_name: str, data_dir: str, train_test_split_num: int,
                                   standardize_features(y_train.reshape(-1, 1), y_val.reshape(-1, 1),
                                                        y_test.reshape(-1, 1))]
 
-    if is_add_bias_term is True:
-        x_train = np.hstack((x_train, np.ones((x_train.shape[0], 1))))
-        x_val = np.hstack((x_val, np.ones((x_val.shape[0], 1))))
-        x_test = np.hstack((x_test, np.ones((x_test.shape[0], 1))))
-
     if is_normalize_data is True:
         x_train = x_train / npl.norm(x_train, axis=1, keepdims=True)
         x_val = x_val / npl.norm(x_val, axis=1, keepdims=True)
         x_test = x_test / npl.norm(x_test, axis=1, keepdims=True)
 
-    return x_train, y_train, x_val, y_val, x_test, y_test
+    if is_add_bias_term is True:
+        x_train = np.hstack((x_train, np.ones((x_train.shape[0], 1))))
+        x_val = np.hstack((x_val, np.ones((x_val.shape[0], 1))))
+        x_test = np.hstack((x_test, np.ones((x_test.shape[0], 1))))
+    return (x_train, y_train), (x_val, y_val), (x_test, y_test)
+
+
+def find_nth_small(a, n: int):
+    return np.partition(a, n)[n]
+
+
+def check_trainset_cond(x_reduced) -> bool:
+    eps = np.finfo('float').eps
+    n, m = x_reduced.shape
+    cond = npl.cond(x_reduced @ x_reduced.T) if m > n else npl.cond(x_reduced.T @ x_reduced)
+    return cond > 1 / eps
+
+
+def unique_columns2(data):
+    dt = np.dtype((np.void, data.dtype.itemsize * data.shape[0]))
+    dataf = np.asfortranarray(data).view(dt)
+    u, uind = np.unique(dataf, return_inverse=True)
+    u = u.view(data.dtype).reshape(-1, data.shape[0]).T
+    return (u, uind)
+
+
+def execute_reduce_dataset(x_arr, y_vec, set_size: int,
+                           max_iter: int = 1e2, skip_for_params: int = 100) -> (np.ndarray, np.ndarray):
+    """
+    :param x_arr: data array, each row is a sample
+    :param y_vec: label vector
+    :param set_size: the desired set size
+    :param max_iter: iteration threshold
+    :param skip_for_params: if training set much larger than the number of feature, don't choose specific one
+    :return: reduced set
+    """
+    t0 = time.time()
+    n, m = x_arr.shape
+    x_reduced, y_reduced = np.copy(x_arr[:set_size]), y_vec[:set_size]
+
+    # if training set much larger than the number of feature, don't choose specific one
+    if set_size > skip_for_params * m:
+        return x_reduced, y_reduced
+
+    # Choose invertible training set
+    n = 0
+    while check_trainset_cond(x_reduced):
+
+        # Find the most parallels vector:
+        x_reduced_norm = x_reduced / npl.norm(x_reduced, axis=1, keepdims=True)
+        score = np.abs(x_reduced_norm @ x_reduced_norm.T)
+        most_parallel_row_index = np.unravel_index(score.argmin(), score.shape)[0]
+
+        # Replace the sample with new one, get from the end
+        x_reduced[most_parallel_row_index] = x_arr[len(x_arr) - 1 - np.mod(n, len(x_arr) - 1)]
+        y_reduced[most_parallel_row_index] = y_vec[len(y_vec) - 1 - np.mod(n, len(y_vec) - 1)]
+        n += 1
+        if n > max_iter:
+            break
+
+    if n > 0:
+        logger_default.info('chose x_train_reduced in {} iter in {:.2f}s. check_trainset_cond={}'.format(
+            n, time.time() - t0, check_trainset_cond(x_reduced)))
+    return x_reduced, y_reduced
 
 
 @ray.remote
 def execute_trail(x_train: np.ndarray, y_train: np.ndarray,
                   x_val: np.ndarray, y_val: np.ndarray,
                   x_test: np.ndarray, y_test: np.ndarray,
-                  trail_num: int, trainset_size: int, dataset_name: str,
-                  optimization_dict: dict, debug_print: bool = True, logger_file_path: str = None) -> pd.DataFrame:
-    # Initialize output
+                  split: int, trainset_size: int, dataset_name: str,
+                  pnml_optim_param: dict, debug_print: bool = True, logger_file_path: str = None) -> pd.DataFrame:
+    t0 = time.time()
     logger = logging.getLogger(__name__)
     if logger_file_path is not None:
         logging.basicConfig(filename=logger_file_path, level=logging.INFO)
         logger = logging.getLogger(__name__)
 
-    t0 = time.time()
+    # Initialize output
     df_list = []
 
     # General statistics
     n_test = len(x_test)
     param_df = pd.DataFrame({'dataset_name': [dataset_name] * n_test,
                              'trainset_size': [x_train.shape[0]] * n_test,
-                             'trail_num': [trail_num] * n_test,
+                             'split': [split] * n_test,
                              'valset_size': [x_val.shape[0]] * n_test,
                              'testset_size': [x_test.shape[0]] * n_test,
                              'num_features': [x_train.shape[1]] * n_test})
@@ -143,38 +226,15 @@ def execute_trail(x_train: np.ndarray, y_train: np.ndarray,
 
     # Minimum norm learner
     t1 = time.time()
-    mn_df, theta_mn, mn_valset_var = calc_mn_learner_performance(x_train, y_train, x_val, y_val, x_test, y_test)
+    mn_df = calc_mn_learner_performance(x_train, y_train, x_val, y_val, x_test, y_test, logger=logger)
     df_list.append(mn_df)
     debug_print and logger.info('calc_mn_learner_performance in {:.3f} sec'.format(time.time() - t1))
 
     # Empirical pNML learner
     t1 = time.time()
-    pnml_df = calc_empirical_pnml_performance(x_train, y_train, x_val, y_val, x_test, y_test,
-                                              optimization_dict['pnml_lambda_optim_dict'])
+    pnml_df = calc_pnml_performance(x_train, y_train, x_val, y_val, x_test, y_test, split, pnml_optim_param, logger)
     df_list.append(pnml_df)
-    debug_print and logger.info('calc_empirical_pnml_performance in {:.3f} sec'.format(time.time() - t1))
-
-    # Analytical pNML learner
-    t1 = time.time()
-    pnml_vars = pnml_df['empirical_pnml_variance']
-    analytical_pnml_df = calc_analytical_pnml_performance(x_train, y_train, x_test, y_test, theta_mn, pnml_vars)
-    df_list.append(analytical_pnml_df)
-    debug_print and logger.info('calc_analytical_pnml_performance in {:.3f} sec'.format(time.time() - t1))
-
-    # Genie learner
-    t1 = time.time()
-    pnml_vars = pnml_df['empirical_pnml_variance']
-    genie_df = calc_genie_performance(x_train, y_train, x_test, y_test, theta_mn, pnml_vars)
-    df_list.append(genie_df)
-    debug_print and logger.info('calc_genie_performance in {:.3f} sec. x_train.shape={}'.format(time.time() - t1,
-                                                                                                x_train.shape))
-
-    if False:
-        # MDL
-        t1 = time.time()
-        mdl_df = calc_mdl_performance(x_train, y_train, x_val, y_val, x_test, y_test, mn_valset_var)
-        df_list.append(mdl_df)
-        debug_print and logger.info('calc_mdl_performance in {:.3f} sec'.format(time.time() - t1))
+    debug_print and logger.info('calc_pnml_performance in {:.3f} sec'.format(time.time() - t1))
 
     res_df = pd.concat(df_list, axis=1, sort=False)
     res_df['test_idx'] = res_df.index

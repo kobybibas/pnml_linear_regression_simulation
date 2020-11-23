@@ -7,13 +7,13 @@ import ray
 
 from data_utils.synthetic_data_utils import DataBase
 from learner_utils.analytical_pnml_utils import AnalyticalPNML
-from learner_utils.pnml_utils import Pnml
+from learner_utils.pnml_utils import BasePNML
 
 logger = logging.getLogger(__name__)
 
 
 def execute_x_vec(x_test_array: np.ndarray, data_h: DataBase,
-                  pnml_h: Pnml, analytical_pnml_h: AnalyticalPNML) -> pd.DataFrame:
+                  pnml_h: BasePNML, analytical_pnml_h: AnalyticalPNML) -> pd.DataFrame:
     """
     For each x point, calculate its regret.
     :param x_test_array: x array that contains the x points that will be calculated
@@ -51,15 +51,15 @@ def execute_x_vec(x_test_array: np.ndarray, data_h: DataBase,
 
 
 @ray.remote
-def execute_x_test(x_test: float, data_h: DataBase, pnml_h: Pnml, analytical_pnml_h: AnalyticalPNML) -> dict:
+def execute_x_test(x_test: float, data_h: DataBase, pnml_h: BasePNML, analytical_pnml_h: AnalyticalPNML) -> dict:
     phi_test = data_h.convert_point_to_features(x_test, data_h.model_degree)
     y_hat_erm = pnml_h.predict_erm(phi_test)
-    nf = pnml_h.calc_norm_factor(phi_test, sigma_square=pnml_h.sigma_square)
+    nf = pnml_h.calc_norm_factor(phi_test, sigma_square=pnml_h.var)
     regret = np.log(nf)
     trainset_size, num_features = data_h.phi_train.shape
 
     # Analytical pNML
-    analytical_nf = analytical_pnml_h.calc_norm_factor(phi_test, sigma_square=pnml_h.sigma_square)
+    analytical_nf = analytical_pnml_h.calc_norm_factor(phi_test, sigma_square=pnml_h.var)
     analytical_regret = np.log(analytical_nf)
 
     return {'x_test': x_test, 'nf': nf, 'regret': regret, 'y_hat_erm': y_hat_erm,

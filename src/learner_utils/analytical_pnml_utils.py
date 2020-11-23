@@ -3,11 +3,13 @@ import logging
 import numpy as np
 import pandas as pd
 
+from learner_utils.learner_helpers import calc_effective_trainset_size
+
 logger = logging.getLogger(__name__)
 
 
 class AnalyticalPNML:
-    def __init__(self, phi_train, theta_erm, eigenvalue_threshold: float = 1e-12):
+    def __init__(self, phi_train, theta_erm, eigenvalue_threshold: float = np.finfo('float').eps):
         """
         :param phi_train: data matrix, each row corresponds to train sample
         :param theta_erm: the minimum norm estimator.
@@ -17,7 +19,7 @@ class AnalyticalPNML:
         self.n, self.m = phi_train.shape
         self.u, self.h_square, _ = np.linalg.svd(phi_train.T @ phi_train, full_matrices=True)
         self.rank = min(self.n, self.m)
-        self.rank_effective = self.calc_effective_trainset_size(self.h_square, self.rank, eigenvalue_threshold)
+        self.rank_effective = calc_effective_trainset_size(self.h_square, self.rank, eigenvalue_threshold)
         self.is_overparam = self.m >= self.n
         if self.rank != self.rank_effective:
             logger.info('The effective rank is different: [rank effective]=[{} {}]. [m n]=[{} {}]'.format(
@@ -27,18 +29,6 @@ class AnalyticalPNML:
         self.theta_mn_P_N_theta_mn = self.calc_trainset_subspace_projection(theta_erm)
 
         self.nf0, self.nf1, self.nf2, self.x_bot_square = 0, 0, 0, 0
-
-    @staticmethod
-    def calc_effective_trainset_size(h_square: np.ndarray, rank: int, eigenvalue_threshold: float) -> int:
-        """
-        Calculate the effective dimension of the training set.
-        :param h_square: the singular values of the trainset correlation matrix
-        :param rank: the training set size
-        :param eigenvalue_threshold: the smallest eigenvalue that is allowed
-        :return: The effective dim
-        """
-        rank_effective = min(np.sum(h_square > eigenvalue_threshold), rank)
-        return int(rank_effective)
 
     def calc_norm_factor(self, phi_test: np.ndarray, sigma_square: float) -> float:
         """
@@ -53,11 +43,12 @@ class AnalyticalPNML:
         # Under param
         self.nf0 = float(self.calc_under_param_norm_factor(phi_test))
 
+        # ||x_\bot||^2
+        x = phi_test
+        self.x_bot_square = self.calc_x_bot_square(x)
+
         # Over param
-        if self.is_overparam is True:
-            # ||x_\bot||^2
-            x = phi_test
-            self.x_bot_square = self.calc_x_bot_square(x)
+        if self.is_overparam is True and self.x_bot_square > 1e-6:  # todo get as input
             x_parallel_square = self.calc_trainset_subspace_projection(x)
             self.nf1 = float(2 * self.x_bot_square * x_parallel_square)
 

@@ -4,12 +4,13 @@ import os.path as osp
 import time
 
 import hydra
-import numpy as np
 import numpy.linalg as npl
 import pandas as pd
 import ray
 
+from data_utils.real_data_utils import choose_samples_for_debug
 from data_utils.real_data_utils import create_trainset_sizes_to_eval, execute_trail, get_uci_data
+from data_utils.real_data_utils import get_set_splits, execute_reduce_dataset
 from ray_utils import ray_init
 
 logger = logging.getLogger(__name__)
@@ -17,40 +18,37 @@ logger = logging.getLogger(__name__)
 
 def submit_dataset_experiment_jobs(dataset_name: str, cfg) -> pd.DataFrame:
     logger_file_path = logging.getLoggerClass().root.handlers[1].baseFilename
+    splits = cfg.splits if len(cfg.splits) > 0 else get_set_splits(dataset_name, cfg.data_dir)
     task_list = []
-    for trail_num in cfg.train_test_split_num:
-        # Get dataset statistic
-        x_train, y_train, x_val, y_val, x_test, y_test = get_uci_data(dataset_name, cfg.data_dir, trail_num,
-                                                                      is_standardize_features=cfg.is_standardize_features,
-                                                                      is_add_bias_term=cfg.is_add_bias_term,
-                                                                      is_normalize_data=cfg.is_normalize_data)
-
-        # Define train set to evaluate
-        n_train, n_features = x_train.shape
+    for split in splits:
+        trainset, valset, testset = get_uci_data(dataset_name, cfg.data_dir, split,
+                                                 is_standardize_features=cfg.is_standardize_features,
+                                                 is_add_bias_term=cfg.is_add_bias_term,
+                                                 is_normalize_data=cfg.is_normalize_data)
+        # Define train set size to evaluate
+        n_train, n_features = trainset[0].shape
         trainset_sizes = create_trainset_sizes_to_eval(cfg.trainset_sizes, n_train, n_features)
-        logger.info('{} trail_num={}: [n_features n_train n_val n_test]=[{} {} {} {}]'.format(
-            dataset_name, trail_num, n_features, n_train, len(x_val), len(x_test)))
+        logger.info('{} split={}: [n_features n_train n_val n_test]=[{} {} {} {}]'.format(
+            dataset_name, split, n_features, n_train, len(valset[0]), len(testset[0])))
         logger.info(trainset_sizes)
+
 
         # Submit tasks
         for i, trainset_size in enumerate(trainset_sizes):
-
             # Reduce training set size
-            x_train_reduced, y_train_reduced = np.copy(x_train[:trainset_size, :]), np.copy(y_train[:trainset_size])
-            if cfg.fast_dev_run is True:
-                x_train, y_train = x_train[:3, :], y_train[:3]
-                x_val, y_val = x_val[:2, :], y_val[:2]
-                x_test, y_test = x_test[:2, :], y_test[:2]
-
-            _, h, _ = npl.svd(x_train)
-            logger.info('x_train_reduced.shape={}. Training set singular values: {}'.format(x_train_reduced.shape, h))
+            trainset_input, valset_input, testset_input = choose_samples_for_debug(cfg, trainset, valset, testset)
+            x_train_reduced, y_train_reduced = execute_reduce_dataset(trainset_input[0],
+                                                                      trainset_input[1],
+                                                                      trainset_size)
+            logger.info('{} split={} train.shape={}.\tTrainset svd [largest smallest]={}'.format(
+                dataset_name, split, x_train_reduced.shape, npl.svd(x_train_reduced)[1][[0, -1]]))
 
             # Execute trail
             ray_task = execute_trail.remote(x_train_reduced, y_train_reduced,
-                                            x_val, y_val, x_test, y_test,
-                                            trail_num, trainset_size, dataset_name,
-                                            optimization_dict=cfg.optimization_dict,
-                                            debug_print=cfg.fast_dev_run,
+                                            valset_input[0], valset_input[1], testset_input[0], testset_input[1],
+                                            split, trainset_size, dataset_name,
+                                            pnml_optim_param=cfg.pnml_optim_param,
+                                            debug_print=cfg.fast_dev_run or len(cfg.test_idxs) > 0,
                                             logger_file_path=logger_file_path)
             task_list.append(ray_task)
     return task_list
@@ -80,12 +78,12 @@ def collect_dataset_experiment_results(ray_task_list: list):
 
     # Save to file
     res_df = pd.concat(res_list, ignore_index=True, sort=False)
-    res_df = res_df.sort_values(by=['dataset_name', 'num_features', 'trainset_size', 'trail_num'],
+    res_df = res_df.sort_values(by=['dataset_name', 'num_features', 'trainset_size', 'split'],
                                 ascending=[False, True, True, True])
     return res_df
 
 
-@hydra.main(config_path='../configs', config_name="uci_experiment")
+@hydra.main(config_path='../configs', config_name="real_data")
 def execute_real_datasets_experiment(cfg):
     t0 = time.time()
     logger.info(cfg.pretty())

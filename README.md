@@ -67,15 +67,14 @@ jupyter-notebook pnml_min_norm.ipynb
 
 ```bash
 cd src
-python main_real_data.py --config-name uci_experiment dataset_name=bostonHousing; \
-python main_real_data.py --config-name uci_experiment dataset_name=concrete; \
-python main_real_data.py --config-name uci_experiment dataset_name=energy; \
-python main_real_data.py --config-name uci_experiment dataset_name=kin8nm; \
-python main_real_data.py --config-name uci_experiment dataset_name=naval-propulsion-plant; \
-python main_real_data.py --config-name uci_experiment dataset_name=power-plant; \
-python main_real_data.py --config-name uci_experiment dataset_name=wine-quality-red; \
-python main_real_data.py --config-name uci_experiment dataset_name=yacht;
-
+python main_real_data.py --config-name real_data dataset_name=bostonHousing; \
+python main_real_data.py --config-name real_data dataset_name=concrete; \
+python main_real_data.py --config-name real_data dataset_name=energy; \
+python main_real_data.py --config-name real_data dataset_name=kin8nm; \
+python main_real_data.py --config-name real_data dataset_name=naval-propulsion-plant; \
+python main_real_data.py --config-name real_data dataset_name=power-plant; \
+python main_real_data.py --config-name real_data dataset_name=wine-quality-red; \
+python main_real_data.py --config-name real_data dataset_name=yacht; 
 ```
 
 Visualize:
@@ -97,14 +96,4 @@ jupyter-notebook real_data.ipynb
   organization={IEEE}
 }
 ```
-
-
-
-# TODO
-
-- [ ] Deal with warnings in real data (adaptive interval).
-- [ ] See what is wrong with naval-propulsion-plant.
-- [ ] pNML min norm: num features=4, missing a bump.
-
-
 

@@ -1,0 +1,56 @@
+data_dir: ../data/UCI_Datasets  # directory to store the downloaded data in
+
+# Preprocess param
+is_standardize_features: true
+is_normalize_data: true
+is_add_bias_term: true
+max_test_samples: 1000
+
+# Machine params
+is_local_mode: false            # Whether to use ray debug mode: using only 1 cpu.
+num_cpus: -1                    # Number of cpu to use. Set -1 to use all available cpus.
+
+# Datasets to analyze
+dataset_name: bostonHousing
+# concrete
+# energy
+# kin8nm
+# naval-propulsion-plant
+# power-plant
+# protein-tertiary-structure
+# wine-quality-red
+# yacht
+
+
+pnml_optim_param:
+  is_one_sided_interval: True   # pNML distribution is symmetric, eval only one side to accelerate
+  var_initial: 0.1              # The default variance
+  y_interval_min: 1e-12         # The default maximum y to eval
+  y_interval_max: 1e6           # The default minimum y to eval
+  y_interval_num: 1024          # Number of y to eval in the pNML procedure
+  x_bot_square_threshold: 1e-6  # min valid value of x_\bot^2.
+  pnml_lambda_optim_param:
+    tol_func: 0.005           # Allowed ratio to norm: |norm-norm_constraint|/ norm_constraint
+    max_iter: 1e3
+  pnml_var_optim_param:
+    sigma_square_0: 1e-1
+    sigma_interval_min: 1e-2  # Notice this is sigma and not sigma square
+    sigma_interval_max: 10
+    sigma_interval_steps: 50
+
+
+
+# For debug
+fast_dev_run: false
+test_idxs: []             # Fill to debug specific test sample
+val_idxs: []              # Fill to debug specific test sample
+trainset_sizes: []        # Number of trainset sizes to eval. if empty use default
+splits: []                # Define specific train-test split. If none is given all splits are executed
+
+hydra:
+  run:
+    # Output directory
+    dir: ../output/real_data_${dataset_name}_${now:%Y%m%d_%H%m%S}
+  sweep:
+    dir: ../output/
+    subdir: real_data_${dataset_name}_${now:%Y%m%d_%H%m%S}_${hydra.job.num}
