@@ -35,6 +35,26 @@ class UnderparamPNML(BasePNML):
         self.intermediate_dict['nf'] = nf
         return nf
 
+    def calc_pnml_logloss(self, x_test: np.ndarray, y_gt: float, nf: np.ndarray) -> float:
+        # Make the input as column vector
+        x_test = self.convert_to_column_vec(x_test)
+        var = self.var
+
+        # Add test to train
+        logloss = 0.5 * np.log(2 * np.pi * var * (nf ** 2)) + (y_gt - self.theta_erm.T @ x_test) ** 2 / (
+                2 * var * (nf ** 2))
+        return float(logloss)
+
+    def calc_genie_logloss(self, x_test: np.ndarray, y_gt: float, nf: float) -> float:
+        # Make the input as column vector
+        x_test = self.convert_to_column_vec(x_test)
+        var = self.var
+
+        # Add test to train
+        logloss = 0.5 * np.log(2 * np.pi * var) + (y_gt - self.theta_erm.T @ x_test) ** 2 / (
+                2 * var * (nf ** 2))
+        return float(logloss)
+
     def verify_pnml_results(self) -> (bool, str):
         # Initialize output
         success, msg = True, ''

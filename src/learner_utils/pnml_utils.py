@@ -44,7 +44,7 @@ class BasePNML:
         self.u, self.h, self.vt = npl.svd(self.x_arr_train.T)
         self.h_square = self.h ** 2
         self.theta_erm = fit_least_squares_estimator(self.x_arr_train, self.y_vec_train, lamb=self.lamb)
-        self.rank = np.sum(self.h > np.finfo('float').eps)
+        self.rank = np.sum(self.h_square > np.finfo('float').eps)
 
         # Indication of success or fail
         self.intermediate_dict = {}
@@ -103,17 +103,13 @@ class BasePNML:
         """
         pass
 
-    def calc_pnml_logloss(self, x_test: np.ndarray, y_gt: float, nf: np.ndarray) -> float:
-        # Make the input as column vector
-        x_test = self.convert_to_column_vec(x_test)
-        var = self.var
+    @abstractmethod
+    def calc_pnml_logloss(self, x_test: np.ndarray, y_gt: float, nf: float) -> float:
+        pass
 
-        # Add test to train
-        x_arr, y_vec = self.add_test_to_train(self.x_arr_train, x_test, self.y_vec_train, y_gt)
-        theta_genie = self.fit_least_squares_estimator(x_arr, y_vec, self.lamb)
-        logloss = 0.5 * np.log(2 * np.pi * var * (nf ** 2)) + (y_gt - theta_genie.T @ x_test) ** 2 / (
-                2 * var)
-        return float(logloss)
+    @abstractmethod
+    def calc_genie_logloss(self, x_test: np.ndarray, y_gt: float, nf: float) -> float:
+        pass
 
     @abstractmethod
     def verify_pnml_results(self) -> (bool, str):

@@ -106,17 +106,17 @@ def calc_pnml_testset_performance(pnml_handlers: dict, x_test: np.ndarray, y_tes
         success_list.append(success)
 
         # Genie performance
-        loss_genie = pnml_h.calc_pnml_logloss(x_i, y_i, 1.0)
+        loss_genie = pnml_h.calc_genie_logloss(x_i, y_i, nf)
         loss_genies.append(loss_genie)
-        if loss_genie > loss and nf > 1.0:
-            msg += 'loss genie>pnml: {}>{}. '.format(loss_genie, loss)
+        if loss_genie > -np.log(np.finfo('float').eps):
+            msg += 'Genie did not converge. '.format(loss_genie)
             success = False
 
         # analytical pnml
         analytical_nf = pnml_h.calc_analytical_norm_factor(x_i)
         analytical_nfs.append(analytical_nf)
         # msg
-        log = '[{:03d}/{}] pNML Val: split={:02d} shape={}\t '.format(
+        log = '[{:03d}/{}] pNML Test: split={:02d} shape={}\t '.format(
             i, len(x_test) - 1, split_num, pnml_h.x_arr_train.shape)
         log += '[nf loss var]=[{:.6f} {:.6f} {:.6f}] '.format(
             nf, loss, pnml_h.var)
@@ -133,6 +133,7 @@ def calc_pnml_testset_performance(pnml_handlers: dict, x_test: np.ndarray, y_tes
                 'pnml_test_logloss': losses,
                 'pnml_variance': [pnml_h.var] * len(x_test),
                 'pnml_success': success_list,
+                'pnml_norm_factors': nfs,
                 'x_bot_square': x_bot_square_list,
                 'x_norm_square': x_norm_square_list,
                 'genie_test_logloss': loss_genies,
@@ -156,17 +157,20 @@ def calc_pnml_performance(x_train: np.ndarray, y_train: np.ndarray,
 
     # Initialize pNML with ERM var.
     theta_erm = fit_least_squares_estimator(x_train, y_train)
-    var_erm = calc_best_var(x_val, y_val, theta_erm)
-    pnml_handlers['underparam'].var = var_erm
-    pnml_handlers['underparam'].var_input = var_erm
-    pnml_handlers['overparam'].var = var_erm
-    pnml_handlers['overparam'].var_input = var_erm
+    var_default = pnml_optim_param['sigma_square_0']
+    var = calc_best_var(x_val, y_val, theta_erm) / 10 if var_default <= 0 else var_default
+    pnml_handlers['underparam'].var = var
+    pnml_handlers['underparam'].var_input = var
+    pnml_handlers['overparam'].var = var
+    pnml_handlers['overparam'].var_input = var
     x_bot_square_threshold = pnml_optim_param['x_bot_square_threshold']
 
     # Compute best variance using validation set
-    valset_mean_var = optimize_pnml_var_on_valset(pnml_handlers, x_val, y_val, split_num,
-                                                  x_bot_square_threshold,
-                                                  logger)
+    valset_mean_var = var
+    if not pnml_optim_param["skip_pnml_optimize_var"]:
+        valset_mean_var = optimize_pnml_var_on_valset(pnml_handlers, x_val, y_val, split_num,
+                                                      x_bot_square_threshold,
+                                                      logger)
 
     # Assign best var
     pnml_handlers['underparam'].var = valset_mean_var

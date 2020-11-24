@@ -1,6 +1,7 @@
 import logging
 
 import numpy as np
+import scipy.signal
 
 from learner_utils.learner_helpers import calc_theta_norm
 from learner_utils.optimization_utils import fit_norm_constrained_least_squares
@@ -53,6 +54,15 @@ class OverparamPNML(BasePNML):
         x_bot_square = np.sum((self.u[:, -self.m + rank:].T @ x_test) ** 2)
         return x_bot_square
 
+    def filter_genie_probs(self, probs_of_genies):
+        # todo: handling only one sided
+        prob_smooth = scipy.signal.medfilt(probs_of_genies[1:], kernel_size=21)
+        prob_smooth = np.append(probs_of_genies[0], prob_smooth)
+
+        # Must decrease
+        probs_decreasing = np.maximum.accumulate(prob_smooth[::-1])[::-1]
+        return probs_decreasing
+
     def calc_norm_factor(self, x_test: np.array) -> float:
         """
         Calculate normalization factor using numerical integration
@@ -66,8 +76,11 @@ class OverparamPNML(BasePNML):
         # Calc genies predictions
         thetas = self.calc_genie_thetas(x_test, self.y_interval)
         probs_of_genies = self.calc_probs_of_genies(x_test, self.y_interval, thetas)
+        probs_of_genies_smooth = self.filter_genie_probs(probs_of_genies)
         self.intermediate_dict['thetas'] = thetas
         self.intermediate_dict['probs_of_genies'] = probs_of_genies
+        self.intermediate_dict['probs_of_genies_smooth'] = probs_of_genies_smooth
+        probs_of_genies = probs_of_genies_smooth
 
         # Integrate to find the pNML normalization factor
         nf = float(np.trapz(probs_of_genies, x=self.y_interval))
@@ -99,6 +112,10 @@ class OverparamPNML(BasePNML):
                                              y_interval_num))
         if is_y_one_sided_interval is False:
             y_to_eval = np.unique(np.append(y_to_eval, -y_to_eval))
+
+        # shift around the erm
+        if x_test is not None:
+            y_to_eval = self.shift_y_interval(x_test, self.theta_erm, y_to_eval)
         return y_to_eval
 
     def find_y_interval_edges(self, x_test: np.ndarray) -> float:
@@ -144,16 +161,16 @@ class OverparamPNML(BasePNML):
         return success, msg
 
     @staticmethod
-    def shift_y_interval(phi_test: np.ndarray, theta_erm: np.ndarray, y_interval: np.ndarray) -> np.ndarray:
+    def shift_y_interval(x_test: np.ndarray, theta_erm: np.ndarray, y_interval: np.ndarray) -> np.ndarray:
         """
         Adapt the y interval to the test sample.
         we want to predict around the ERM prediction based on the analytical result.
-        :param phi_test: the test sample data.
+        :param x_test: the test sample data.
         :param theta_erm: the erm parameters
         :param y_interval: the basic y interval
         :return: the shifted y interval based on the erm prediction
         """
-        y_pred = theta_erm.T @ phi_test
+        y_pred = theta_erm.T @ x_test
         y_vec = y_interval + y_pred
         return np.squeeze(y_vec)
 
@@ -246,11 +263,48 @@ class OverparamPNML(BasePNML):
         nf = nf0 * (1 + 2 * x_bot_square) + nf1
         return float(nf)
 
+    def calc_pnml_logloss(self, x_test: np.ndarray, y_gt: float, nf: np.ndarray) -> float:
+        # Make the input as column vector
+        x_test = self.convert_to_column_vec(x_test)
+        var = self.var
+
+        # Add test to train
+        x_arr, y_vec = self.add_test_to_train(self.x_arr_train, x_test, self.y_vec_train, y_gt)
+        theta_genie = self.fit_least_squares_estimator(x_arr, y_vec, self.lamb)
+        logloss = 0.5 * np.log(2 * np.pi * var * (nf ** 2)) + (y_gt - theta_genie.T @ x_test) ** 2 / (
+                2 * var)
+        return float(logloss)
+
+    def calc_genie_logloss(self, x_test: np.ndarray, y_gt: float, nf: float = 1.0) -> float:
+        # Make the input as column vector
+        x_test = self.convert_to_column_vec(x_test)
+        var = self.var
+
+        # Add test to train
+        x_arr, y_vec = self.add_test_to_train(self.x_arr_train, x_test, self.y_vec_train, y_gt)
+        theta_genie = self.fit_least_squares_estimator(x_arr, y_vec, self.lamb)
+        logloss = 0.5 * np.log(2 * np.pi * var) + (y_gt - theta_genie.T @ x_test) ** 2 / (2 * var)
+        return float(logloss)
+
     def plot_genies_prob(self):
         import matplotlib.pyplot as plt
-        plt.plot(self.y_interval, self.intermediate_dict['probs_of_genies'], '*')
-        plt.xscale('symlog')
-        plt.ylabel('Prob')
-        plt.xlabel('y')
-        plt.grid()
+        fig, axs = plt.subplots(3, 1, sharex=True)
+        ax = axs[0]
+        ax.plot(self.y_interval, self.intermediate_dict['probs_of_genies'], '*')
+        ax.set_xscale('log')
+        ax.set_ylabel('Prob')
+        ax.grid()
+
+        ax = axs[1]
+        norms = [calc_theta_norm(theta_i) for theta_i in self.intermediate_dict['thetas']]
+        ax.plot(self.y_interval, norms, '*')
+        ax.set_ylabel('||theta||')
+        ax.axhline(self.norm_constraint, color='r')
+        ax.grid()
+
+        ax = axs[2]
+        ax.plot(self.y_interval, self.intermediate_dict['probs_of_genies_smooth'], '*')
+        ax.set_ylabel('Prob smooth', '*')
+        ax.set_xlabel('y')
+        ax.grid()
         plt.show()

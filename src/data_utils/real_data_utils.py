@@ -25,8 +25,8 @@ def create_trainset_sizes_to_eval(trainset_sizes: list, n_train: int, n_features
     """
     if len(trainset_sizes) == 0:
         min_trainset = 2
-        trainset_sizes_over_param = np.arange(min_trainset, n_features - 1).astype(int)
-        trainset_sizes_under_param = np.logspace(np.log10(n_features + 2), np.log10(n_train), 10).round()
+        trainset_sizes_over_param = np.arange(min_trainset, n_features + 1).astype(int)
+        trainset_sizes_under_param = np.logspace(np.log10(n_features + 1), np.log10(n_train), 10).round()
         trainset_sizes = np.append(trainset_sizes_over_param, trainset_sizes_under_param)
         trainset_sizes = np.unique(trainset_sizes).astype(int)
     return trainset_sizes
@@ -121,6 +121,7 @@ def get_uci_data(dataset_name: str, data_dir: str, split: int,
     x_train, y_train = x_train[:num_training_examples, :], y_train[:num_training_examples]
 
     x_val, y_val = x_val[:200, :], y_val[:200]  # Maximum of 100 validation samples
+
     if is_standardize_features is True:
         # Apply standardization on numerical features
         x_train, x_val, x_test = standardize_features(x_train, x_val, x_test)
@@ -179,7 +180,7 @@ def execute_reduce_dataset(x_arr, y_vec, set_size: int,
 
     # Choose invertible training set
     n = 0
-    while check_trainset_cond(x_reduced):
+    while False and check_trainset_cond(x_reduced):
 
         # Find the most parallels vector:
         x_reduced_norm = x_reduced / npl.norm(x_reduced, axis=1, keepdims=True)

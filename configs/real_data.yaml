@@ -23,18 +23,19 @@ dataset_name: bostonHousing
 
 
 pnml_optim_param:
-  is_one_sided_interval: True   # pNML distribution is symmetric, eval only one side to accelerate
-  var_initial: 0.1              # The default variance
-  y_interval_min: 1e-12         # The default maximum y to eval
-  y_interval_max: 1e6           # The default minimum y to eval
-  y_interval_num: 1024          # Number of y to eval in the pNML procedure
-  x_bot_square_threshold: 1e-6  # min valid value of x_\bot^2.
+  is_one_sided_interval: True     # pNML distribution is symmetric, eval only one side to accelerate
+  var_initial: 0.1                # The default variance
+  y_interval_min: 1e-12           # The default maximum y to eval
+  y_interval_max: 1e6             # The default minimum y to eval
+  y_interval_num: 1024            # Number of y to eval in the pNML procedure
+  x_bot_square_threshold: 1e-3    # min valid value of x_\bot^2.
+  sigma_square_0: 0.0             # is used as default if not zero, otherwise use the ERM var
+  skip_pnml_optimize_var: False
   pnml_lambda_optim_param:
-    tol_func: 0.005           # Allowed ratio to norm: |norm-norm_constraint|/ norm_constraint
+    tol_func: 1e-3                # Allowed ratio to norm: |norm-norm_constraint|/ norm_constraint
     max_iter: 1e3
   pnml_var_optim_param:
-    sigma_square_0: 1e-1
-    sigma_interval_min: 1e-2  # Notice this is sigma and not sigma square
+    sigma_interval_min: 1e-2      # Notice this is sigma and not sigma square
     sigma_interval_max: 10
     sigma_interval_steps: 50
 

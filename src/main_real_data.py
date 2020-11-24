@@ -24,14 +24,14 @@ def submit_dataset_experiment_jobs(dataset_name: str, cfg) -> pd.DataFrame:
         trainset, valset, testset = get_uci_data(dataset_name, cfg.data_dir, split,
                                                  is_standardize_features=cfg.is_standardize_features,
                                                  is_add_bias_term=cfg.is_add_bias_term,
-                                                 is_normalize_data=cfg.is_normalize_data)
+                                                 is_normalize_data=cfg.is_normalize_data
+                                                 )
         # Define train set size to evaluate
         n_train, n_features = trainset[0].shape
         trainset_sizes = create_trainset_sizes_to_eval(cfg.trainset_sizes, n_train, n_features)
         logger.info('{} split={}: [n_features n_train n_val n_test]=[{} {} {} {}]'.format(
             dataset_name, split, n_features, n_train, len(valset[0]), len(testset[0])))
         logger.info(trainset_sizes)
-
 
         # Submit tasks
         for i, trainset_size in enumerate(trainset_sizes):

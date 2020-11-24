@@ -137,7 +137,7 @@ def fit_norm_constrained_least_squares(x_arr: np.ndarray, y_vec: np.ndarray, nor
     # After adding a sample, the norm must increase. If this is not the case, there is a stability issue, lamb ~=0
     lamb_fit = 0.0
     theta_fit = fit_least_squares_estimator(x_arr, y_vec, lamb=lamb_fit)
-    if calc_theta_norm(theta_fit) <= norm_constraint + np.finfo('float').eps:
+    if calc_theta_norm(theta_fit) <= norm_constraint:
         optim_res_dict = {'fitted_lamb_list': lamb_fit, 'success': True}
         return theta_fit, lamb_fit, optim_res_dict
 
@@ -227,11 +227,11 @@ def optimize_pnml_var(epsilon_square_gt: float, epsilon_square_list: list, y_tra
             loss_best = res.fun
             sigma_best = res.x
             sigma_0_best = sigma_0
-        debug_list.append([{'sigma_0':sigma_0,
-                            'res.message':res.message,
+        debug_list.append([{'sigma_0': sigma_0,
+                            'res.message': res.message,
                             'res.x': res.x,
                             'nf': calc_nf(res.x),
-                            'res.success':bool(res.success)
+                            'res.success': bool(res.success)
                             }])
 
     # Verify output

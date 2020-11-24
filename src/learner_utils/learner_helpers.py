@@ -38,14 +38,16 @@ def calc_theta_norm(theta: np.ndarray) -> float:
 
 def calc_square_error(x_data: np.ndarray, y_labels: np.ndarray, theta: np.ndarray) -> np.ndarray:
     y_hat = x_data @ theta
-    return (y_hat - y_labels) ** 2
+    y_hat = y_hat.squeeze()
+    return np.squeeze((y_hat - y_labels) ** 2)
 
 
 def calc_logloss(x_arr: np.ndarray, y_true: np.ndarray, theta: np.ndarray, var: float) -> np.ndarray:
     y_hat = x_arr @ theta
+    y_hat = y_hat.squeeze()
     prob = np.exp(-(y_hat - y_true) ** 2 / (2 * var)) / np.sqrt(2 * np.pi * var)
     logloss = -np.log(prob + np.finfo('float').eps)
-    return logloss
+    return logloss.squeeze()
 
 
 def calc_var_with_valset(x_val: np.ndarray, y_val: np.ndarray, theta: np.ndarray) -> float:
