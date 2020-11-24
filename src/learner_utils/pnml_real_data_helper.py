@@ -11,7 +11,7 @@ from learner_utils.underparam_pnml_utils import UnderparamPNML
 logger_default = logging.getLogger(__name__)
 
 
-def choose_pnml_h_type(pnml_handlers, x_i, x_bot_square_threshold):
+def choose_pnml_h_type(pnml_handlers, x_i, x_bot_threshold):
     overparam_pnml_h = pnml_handlers['overparam']
     underparam_pnml_h = pnml_handlers['underparam']
     assert isinstance(overparam_pnml_h, OverparamPNML)
@@ -23,12 +23,12 @@ def choose_pnml_h_type(pnml_handlers, x_i, x_bot_square_threshold):
         x_bot_square = 0.0
     else:
         x_bot_square = overparam_pnml_h.calc_x_bot_square(x_i)
-        pnml_h = overparam_pnml_h if x_bot_square / x_norm_square > x_bot_square_threshold else underparam_pnml_h
+        pnml_h = overparam_pnml_h if x_bot_square / x_norm_square > x_bot_threshold else underparam_pnml_h
     return pnml_h, x_bot_square, x_norm_square
 
 
 def optimize_pnml_var_on_valset(pnml_handlers: dict, x_val, y_val, split_num: int,
-                                x_bot_square_threshold=np.finfo('float').eps,
+                                x_bot_threshold=np.finfo('float').eps,
                                 logger=logger_default) -> float:
     overparam_pnml_h = pnml_handlers['overparam']
     underparam_pnml_h = pnml_handlers['underparam']
@@ -42,7 +42,7 @@ def optimize_pnml_var_on_valset(pnml_handlers: dict, x_val, y_val, split_num: in
         nf, loss = -1, -1
 
         # Check projection on orthogonal subspace
-        pnml_h, x_bot_square, x_norm_square = choose_pnml_h_type(pnml_handlers, x_i, x_bot_square_threshold)
+        pnml_h, x_bot_square, x_norm_square = choose_pnml_h_type(pnml_handlers, x_i, x_bot_threshold)
 
         # Find best sigma square
         pnml_h.reset()
@@ -78,7 +78,7 @@ def optimize_pnml_var_on_valset(pnml_handlers: dict, x_val, y_val, split_num: in
 
 def calc_pnml_testset_performance(pnml_handlers: dict, x_test: np.ndarray, y_test: np.ndarray,
                                   split_num: int,
-                                  x_bot_square_threshold=np.finfo('float').eps,
+                                  x_bot_threshold=np.finfo('float').eps,
                                   logger=logger_default) -> pd.DataFrame:
     overparam_pnml_h = pnml_handlers['overparam']
     underparam_pnml_h = pnml_handlers['underparam']
@@ -92,7 +92,7 @@ def calc_pnml_testset_performance(pnml_handlers: dict, x_test: np.ndarray, y_tes
         t0 = time.time()
 
         # Check projection on orthogonal subspace
-        pnml_h, x_bot_square, x_norm_square = choose_pnml_h_type(pnml_handlers, x_i, x_bot_square_threshold)
+        pnml_h, x_bot_square, x_norm_square = choose_pnml_h_type(pnml_handlers, x_i, x_bot_threshold)
         x_norm_square_list.append(x_norm_square)
 
         # calc normalization factor (nf)
@@ -150,27 +150,25 @@ def calc_pnml_performance(x_train: np.ndarray, y_train: np.ndarray,
                           logger=logger_default) -> pd.DataFrame:
     # Initialize pNML
     pnml_handlers = {'underparam': UnderparamPNML(x_arr_train=x_train, y_vec_train=y_train,
-                                                  var=pnml_optim_param['var_initial'], lamb=0.0, logger=logger),
+                                                  var=pnml_optim_param['var'], lamb=0.0, logger=logger),
                      'overparam': OverparamPNML(x_arr_train=x_train, y_vec_train=y_train,
-                                                var=pnml_optim_param['var_initial'], lamb=0.0, logger=logger,
+                                                var=pnml_optim_param['var'], lamb=0.0, logger=logger,
                                                 pnml_optim_param=pnml_optim_param)}
 
     # Initialize pNML with ERM var.
-    theta_erm = fit_least_squares_estimator(x_train, y_train)
-    var_default = pnml_optim_param['sigma_square_0']
-    var = calc_best_var(x_val, y_val, theta_erm) / 10 if var_default <= 0 else var_default
-    pnml_handlers['underparam'].var = var
-    pnml_handlers['underparam'].var_input = var
-    pnml_handlers['overparam'].var = var
-    pnml_handlers['overparam'].var_input = var
-    x_bot_square_threshold = pnml_optim_param['x_bot_square_threshold']
+    if pnml_optim_param['var'] <= 0.0:
+        theta_erm = fit_least_squares_estimator(x_train, y_train)
+        var = calc_best_var(x_val, y_val, theta_erm)
+        pnml_handlers['underparam'].var = var
+        pnml_handlers['underparam'].var_input = var
+        pnml_handlers['overparam'].var = var
+        pnml_handlers['overparam'].var_input = var
+    x_bot_threshold = pnml_optim_param['x_bot_threshold']
 
     # Compute best variance using validation set
     valset_mean_var = var
     if not pnml_optim_param["skip_pnml_optimize_var"]:
-        valset_mean_var = optimize_pnml_var_on_valset(pnml_handlers, x_val, y_val, split_num,
-                                                      x_bot_square_threshold,
-                                                      logger)
+        valset_mean_var = optimize_pnml_var_on_valset(pnml_handlers, x_val, y_val, split_num, x_bot_threshold, logger)
 
     # Assign best var
     pnml_handlers['underparam'].var = valset_mean_var
@@ -180,6 +178,6 @@ def calc_pnml_performance(x_train: np.ndarray, y_train: np.ndarray,
 
     # Execute on test set
     df = calc_pnml_testset_performance(pnml_handlers, x_test, y_test, split_num,
-                                       x_bot_square_threshold,
+                                       x_bot_threshold,
                                        logger)
     return df

@@ -37,8 +37,7 @@ def submit_dataset_experiment_jobs(dataset_name: str, cfg) -> pd.DataFrame:
         for i, trainset_size in enumerate(trainset_sizes):
             # Reduce training set size
             trainset_input, valset_input, testset_input = choose_samples_for_debug(cfg, trainset, valset, testset)
-            x_train_reduced, y_train_reduced = execute_reduce_dataset(trainset_input[0],
-                                                                      trainset_input[1],
+            x_train_reduced, y_train_reduced = execute_reduce_dataset(trainset_input[0], trainset_input[1],
                                                                       trainset_size)
             logger.info('{} split={} train.shape={}.\tTrainset svd [largest smallest]={}'.format(
                 dataset_name, split, x_train_reduced.shape, npl.svd(x_train_reduced)[1][[0, -1]]))
@@ -60,7 +59,6 @@ def collect_dataset_experiment_results(ray_task_list: list):
     :param ray_task_list: list of jobs
     :return: dataframe with results
     """
-
     res_list = []
     total_jobs = len(ray_task_list)
     logger.info('Collecting jobs. total_jobs={}'.format(total_jobs))

@@ -87,6 +87,8 @@ def choose_samples_for_debug(cfg, trainset: tuple, valset: tuple, testset: tuple
     # Reduce test set size: increasing execution speed
     if cfg.max_test_samples > 0:
         x_test, y_test = x_test[:cfg.max_test_samples, :], y_test[:cfg.max_test_samples]
+    if cfg.max_val_samples > 0:
+        x_val, y_val = x_val[:cfg.max_val_samples, :], y_val[:cfg.max_val_samples]
 
     return (x_train, y_train), (x_val, y_val), (x_test, y_test)
 
@@ -120,10 +122,8 @@ def get_uci_data(dataset_name: str, data_dir: str, split: int,
     x_val, y_val = x_train[num_training_examples:, :], y_train[num_training_examples:]
     x_train, y_train = x_train[:num_training_examples, :], y_train[:num_training_examples]
 
-    x_val, y_val = x_val[:200, :], y_val[:200]  # Maximum of 100 validation samples
-
+    # Apply standardization on numerical features
     if is_standardize_features is True:
-        # Apply standardization on numerical features
         x_train, x_val, x_test = standardize_features(x_train, x_val, x_test)
         y_train, y_val, y_test = [y_set.squeeze() for y_set in
                                   standardize_features(y_train.reshape(-1, 1), y_val.reshape(-1, 1),
@@ -141,62 +141,14 @@ def get_uci_data(dataset_name: str, data_dir: str, split: int,
     return (x_train, y_train), (x_val, y_val), (x_test, y_test)
 
 
-def find_nth_small(a, n: int):
-    return np.partition(a, n)[n]
-
-
-def check_trainset_cond(x_reduced) -> bool:
-    eps = np.finfo('float').eps
-    n, m = x_reduced.shape
-    cond = npl.cond(x_reduced @ x_reduced.T) if m > n else npl.cond(x_reduced.T @ x_reduced)
-    return cond > 1 / eps
-
-
-def unique_columns2(data):
-    dt = np.dtype((np.void, data.dtype.itemsize * data.shape[0]))
-    dataf = np.asfortranarray(data).view(dt)
-    u, uind = np.unique(dataf, return_inverse=True)
-    u = u.view(data.dtype).reshape(-1, data.shape[0]).T
-    return (u, uind)
-
-
-def execute_reduce_dataset(x_arr, y_vec, set_size: int,
-                           max_iter: int = 1e2, skip_for_params: int = 100) -> (np.ndarray, np.ndarray):
+def execute_reduce_dataset(x_arr: np.ndarray, y_vec: np.ndarray, set_size: int) -> (np.ndarray, np.ndarray):
     """
     :param x_arr: data array, each row is a sample
     :param y_vec: label vector
     :param set_size: the desired set size
-    :param max_iter: iteration threshold
-    :param skip_for_params: if training set much larger than the number of feature, don't choose specific one
     :return: reduced set
     """
-    t0 = time.time()
-    n, m = x_arr.shape
     x_reduced, y_reduced = np.copy(x_arr[:set_size]), y_vec[:set_size]
-
-    # if training set much larger than the number of feature, don't choose specific one
-    if set_size > skip_for_params * m:
-        return x_reduced, y_reduced
-
-    # Choose invertible training set
-    n = 0
-    while False and check_trainset_cond(x_reduced):
-
-        # Find the most parallels vector:
-        x_reduced_norm = x_reduced / npl.norm(x_reduced, axis=1, keepdims=True)
-        score = np.abs(x_reduced_norm @ x_reduced_norm.T)
-        most_parallel_row_index = np.unravel_index(score.argmin(), score.shape)[0]
-
-        # Replace the sample with new one, get from the end
-        x_reduced[most_parallel_row_index] = x_arr[len(x_arr) - 1 - np.mod(n, len(x_arr) - 1)]
-        y_reduced[most_parallel_row_index] = y_vec[len(y_vec) - 1 - np.mod(n, len(y_vec) - 1)]
-        n += 1
-        if n > max_iter:
-            break
-
-    if n > 0:
-        logger_default.info('chose x_train_reduced in {} iter in {:.2f}s. check_trainset_cond={}'.format(
-            n, time.time() - t0, check_trainset_cond(x_reduced)))
     return x_reduced, y_reduced
 
 

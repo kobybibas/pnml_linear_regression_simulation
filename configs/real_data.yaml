@@ -1,50 +1,48 @@
-data_dir: ../data/UCI_Datasets  # directory to store the downloaded data in
+data_dir: ../data/UCI_Datasets  # Directory that contains the data.
 
 # Preprocess param
-is_standardize_features: true
-is_normalize_data: true
-is_add_bias_term: true
-max_test_samples: 1000
+is_standardize_features: true   # standardize the data features.
+is_normalize_data: true         # Normalize the data such that each sample has norm=1.
+is_add_bias_term: true          # Add one more learn-able param for learning the bias.
+max_test_samples: 1000          # Constrain the test set size.
+max_val_samples: 200            # Constrain the val set size.
 
 # Machine params
 is_local_mode: false            # Whether to use ray debug mode: using only 1 cpu.
-num_cpus: -1                    # Number of cpu to use. Set -1 to use all available cpus.
+num_cpus: -1                    # Number of cpu to use. Set -1 to use all available CPUs.
 
-# Datasets to analyze
-dataset_name: bostonHousing
-# concrete
-# energy
-# kin8nm
-# naval-propulsion-plant
-# power-plant
-# protein-tertiary-structure
-# wine-quality-red
-# yacht
-
+dataset_name: bostonHousing    # Datasets to analyze
+# Available datasets:
+#   concrete
+#   energy
+#   kin8nm
+#   naval-propulsion-plant
+#   power-plant
+#   protein-tertiary-structure
+#   wine-quality-red
+#   yacht
 
 pnml_optim_param:
   is_one_sided_interval: True     # pNML distribution is symmetric, eval only one side to accelerate
-  var_initial: 0.1                # The default variance
+  var: 0.1                        # Is used as default if not zero, otherwise use the ERM var
   y_interval_min: 1e-12           # The default maximum y to eval
   y_interval_max: 1e6             # The default minimum y to eval
   y_interval_num: 1024            # Number of y to eval in the pNML procedure
-  x_bot_square_threshold: 1e-3    # min valid value of x_\bot^2.
-  sigma_square_0: 0.0             # is used as default if not zero, otherwise use the ERM var
-  skip_pnml_optimize_var: False
+  x_bot_threshold: 1e-3           # Min valid value of |x_\bot|^2/|x|^2 to not considered as 0.
+  skip_pnml_optimize_var: False   # Whether to find the best pNML val on validation set.
+  # Params for overparam pNML optimization
   pnml_lambda_optim_param:
-    tol_func: 1e-3                # Allowed ratio to norm: |norm-norm_constraint|/ norm_constraint
-    max_iter: 1e3
+    tol_func: 1e-3                # Allowed ratio to norm: |norm-norm_constraint|/norm_constraint
+    max_iter: 1e3                 # Maximum iteration of lambda optimization
   pnml_var_optim_param:
-    sigma_interval_min: 1e-2      # Notice this is sigma and not sigma square
-    sigma_interval_max: 10
-    sigma_interval_steps: 50
-
-
+    sigma_interval_min: 1e-2      # Initial guess \sigma min interval. Notice this is \sigma and not sigma^2.
+    sigma_interval_max: 10        # Initial guess \sigma max interval.
+    sigma_interval_steps: 50      # Number of initial guesses to evaluate.
 
 # For debug
 fast_dev_run: false
 test_idxs: []             # Fill to debug specific test sample
-val_idxs: []              # Fill to debug specific test sample
+val_idxs: []              # Fill to debug specific val sample
 trainset_sizes: []        # Number of trainset sizes to eval. if empty use default
 splits: []                # Define specific train-test split. If none is given all splits are executed
 
