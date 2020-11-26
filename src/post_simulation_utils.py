@@ -11,9 +11,6 @@ indices = np.linspace(0, cmap.N, 10)
 colors = [cmap(int(i)) for i in indices]
 
 
-def getfloat(name):
-    return float(name.split("_")[-1].split(".np")[0])
-
 
 def load_simulation_results(base_dirs: list):
     dfs, cfgs = [], []

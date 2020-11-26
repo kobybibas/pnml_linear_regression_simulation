@@ -28,39 +28,37 @@ while read requirement; do conda install --yes $requirement || pip install $requ
 ### Synthetic data with under-parameterized pNML
 
 Execute experiment:
-
 ```bash
 cd src
 python main_synthetic_data.py --config-name pnml_polynomial model_degree=4; \
 python main_synthetic_data.py --config-name pnml_polynomial model_degree=6; \
-python main_synthetic_data.py --config-name pnml_polynomial model_degree=8;  
+python main_synthetic_data.py --config-name pnml_polynomial model_degree=7;  
 ```
 
 Visualize:
 
 ```bash
 cd notebook
-jupyter-notebook pnml_viz.ipynb
+jupyter-notebook pnml_syntetic.ipynb
 ```
 
 ### Synthetic data with over-parameterized pNML
 
 Execute experiment:
-
 ```bash
 cd src
-python main_synthetic_data.py --config-name pnml_min_norm_fourier model_degree=4;  \
-python main_synthetic_data.py --config-name pnml_min_norm_fourier model_degree=10;  \
-python main_synthetic_data.py --config-name pnml_min_norm_fourier model_degree=20;  \
-python main_synthetic_data.py --config-name pnml_min_norm_fourier model_degree=50;  \
-python main_synthetic_data.py --config-name pnml_min_norm_fourier model_degree=100; 
+python main_synthetic_data.py --config-name pnml_fourier model_degree=3;  \
+python main_synthetic_data.py --config-name pnml_fourier model_degree=6;  \
+python main_synthetic_data.py --config-name pnml_fourier model_degree=8;  \
+python main_synthetic_data.py --config-name pnml_fourier model_degree=10;  \
+python main_synthetic_data.py --config-name pnml_fourier model_degree=20;  \
+python main_synthetic_data.py --config-name pnml_fourier model_degree=50;  
 ```
 
 Visualize:
-
 ```bash
 cd notebook
-jupyter-notebook pnml_min_norm.ipynb
+jupyter-notebook pnml_syntetic.ipynb
 ```
 
 ### Real data
@@ -78,7 +76,6 @@ python main_real_data.py --config-name real_data dataset_name=yacht;
 ```
 
 Visualize:
-
 ```bash
 cd notebook
 jupyter-notebook real_data.ipynb

@@ -23,9 +23,9 @@ def fit_least_squares_estimator(x_arr: np.ndarray, y_vec: np.ndarray, lamb: floa
         inv = npl.inv(phi_t_phi_plus_lamb)
         theta = inv @ x_arr.T @ y_vec
     else:  # minimum norm
-        # inv = npl.pinv(phi_arr @ phi_arr.T)
-        # theta = phi_arr.T @ inv @ y
-        reg = LinearRegression().fit(x_arr, y_vec)  # using scipy is more stable
+        # inv = npl.pinv(x_arr @ x_arr.T)
+        # theta = x_arr.T @ inv @ y_vec
+        reg = LinearRegression(fit_intercept=False).fit(x_arr, y_vec)  # using scipy is more stable
         theta = reg.coef_
 
     theta = np.expand_dims(theta, 1)
@@ -50,25 +50,8 @@ def calc_logloss(x_arr: np.ndarray, y_true: np.ndarray, theta: np.ndarray, var: 
     return logloss.squeeze()
 
 
-def calc_var_with_valset(x_val: np.ndarray, y_val: np.ndarray, theta: np.ndarray) -> float:
-    y_hat = x_val @ theta
-    return float(np.var(y_hat - y_val))
-
-
 def calc_best_var(phi_arr: np.ndarray, y: np.ndarray, theta: np.ndarray) -> float:
     y_hat = phi_arr @ theta
     epsilon_square = (y_hat.squeeze() - y.squeeze()) ** 2
     var = np.mean(epsilon_square)
     return float(var)
-
-
-def calc_effective_trainset_size(h_square: np.ndarray, rank: int, eigenvalue_threshold: float = 1e-12) -> int:
-    """
-    Calculate the effective dimension of the training set.
-    :param h_square: the singular values of the trainset correlation matrix
-    :param rank: the training set size
-    :param eigenvalue_threshold: the smallest eigenvalue that is allowed
-    :return: The effective dim
-    """
-    rank_effective = min(np.sum(h_square > eigenvalue_threshold), rank)
-    return int(rank_effective)

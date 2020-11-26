@@ -8,8 +8,8 @@ import numpy as np
 
 from data_utils.synthetic_data_utils import data_type_dict
 from experimnet_utils import execute_x_vec
-from learner_utils.analytical_pnml_utils import AnalyticalPNML
-from learner_utils.pnml_utils import BasePNML, BasePNMLMinNorm
+from learner_utils.overparam_pnml_utils import OverparamPNML
+from learner_utils.underparam_pnml_utils import UnderparamPNML
 from ray_utils import ray_init
 
 logger = logging.getLogger(__name__)
@@ -28,23 +28,22 @@ def execute_experiment(cfg):
     # Create trainset
     data_class = data_type_dict[cfg.data_type]
     data_h = data_class(cfg.x_train, cfg.y_train, cfg.model_degree)
-    phi_train, y_train = data_h.phi_train, data_h.y
+    x_train, y_train = data_h.phi_train, data_h.y
 
     # Build pNML
-    if cfg.pnml_type == 'pnml':
-        pnml_h = BasePNML(phi_train, y_train, lamb=cfg.lamb, var=cfg.sigma_square)
-    elif cfg.pnml_type == 'pnml_min_norm':
-        pnml_h = BasePNMLMinNorm(cfg.pnml_lambda_optim_dict, phi_train, y_train, lamb=0.0, sigma_square=cfg.sigma_square)
-    else:
-        raise ValueError(f'pnml_type not supported {cfg.pnml_type}')
-    analytical_pnml_h = AnalyticalPNML(phi_train, pnml_h.theta_erm)
+    pnml_handlers = {'underparam': UnderparamPNML(x_arr_train=x_train, y_vec_train=y_train,
+                                                  var=cfg.pnml_optim_param['var'], lamb=cfg.lamb, logger=logger),
+                     'overparam': OverparamPNML(x_arr_train=x_train, y_vec_train=y_train,
+                                                var=cfg.pnml_optim_param['var'], lamb=cfg.lamb, logger=logger,
+                                                pnml_optim_param=cfg.pnml_optim_param)}
 
     # Initialize multiprocess. Every trainset size in a separate process
     ray_init(cfg.num_cpus, cfg.is_local_mode)
 
     # Execute x_test
-    x_test_array = np.arange(cfg['x_test_min'], cfg['x_test_max'], cfg['dx_test']).round(2)
-    res_df = execute_x_vec(x_test_array, data_h, pnml_h, analytical_pnml_h)
+    x_test = np.arange(cfg['x_test_min'], cfg['x_test_max'], cfg['dx_test']).round(2)
+
+    res_df = execute_x_vec(x_test, data_h, pnml_handlers, cfg.pnml_optim_param.x_bot_threshold)
     res_df['x_train'] = [cfg.x_train] * len(res_df)
     res_df['y_train'] = [cfg.y_train] * len(res_df)
 

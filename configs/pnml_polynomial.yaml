@@ -1,4 +1,3 @@
-pnml_type: pnml
 model_degree: 8
 x_test_max: 1.0
 x_test_min: -1.0
@@ -6,20 +5,29 @@ dx_test: 0.01
 x_train: [-0.7, -0.6, 0.05, 0.1, 0.25, 0.3, 0.35, 0.5, 0.55, 0.6]
 y_train: [-0.1, -0.2, -2.0, -1.0, -0.5, -0.3, 0.1, 0.5, 0.2, 0.1]
 data_type: polynomial
-sigma_square: 1e-3
-
 lamb: 0
-constrain_factor: 1.0
 
 # Machine params
 is_local_mode: false  # Whether to use ray debug mode: using only 1 cpu.
 num_cpus: -1          # Number of cpu to use. Set -1 to use all available cpus.
 
-# Optimization params
-pnml_lambda_optim_dict:
-  tol_func: 1e-6
-  tol_lamb: 1e-16
-  max_iter: 1e4
+pnml_optim_param:
+  is_one_sided_interval: True     # pNML distribution is symmetric, eval only one side to accelerate
+  var: 1e-3                       # Is used as default if not zero, otherwise use the ERM var
+  y_interval_min: 1e-12           # The default maximum y to eval
+  y_interval_max: 1e6             # The default minimum y to eval
+  y_interval_num: 1024            # Number of y to eval in the pNML procedure
+  x_bot_threshold: 1e-3           # Min valid value of |x_\bot|^2/|x|^2 to not considered as 0.
+  skip_pnml_optimize_var: True    # Whether to find the best pNML val on validation set.
+  # Params for overparam pNML optimization
+  pnml_lambda_optim_param:
+    tol_func: 1e-3                # Allowed ratio to norm: |norm-norm_constraint|/norm_constraint
+    max_iter: 1e3                 # Maximum iteration of lambda optimization
+  pnml_var_optim_param:
+    sigma_interval_min: 1e-2      # Initial guess \sigma min interval. Notice this is \sigma and not sigma^2.
+    sigma_interval_max: 10        # Initial guess \sigma max interval.
+    sigma_interval_steps: 50      # Number of initial guesses to evaluate.
+
 
 hydra:
   run:

@@ -1,3 +1,4 @@
+import copy
 import logging
 import time
 
@@ -6,27 +7,27 @@ import pandas as pd
 import ray
 
 from data_utils.synthetic_data_utils import DataBase
-from learner_utils.analytical_pnml_utils import AnalyticalPNML
-from learner_utils.pnml_utils import BasePNML
+from learner_utils.pnml_utils import choose_pnml_h_type
 
 logger = logging.getLogger(__name__)
 
 
-def execute_x_vec(x_test_array: np.ndarray, data_h: DataBase,
-                  pnml_h: BasePNML, analytical_pnml_h: AnalyticalPNML) -> pd.DataFrame:
+def execute_x_vec(x_test: np.ndarray, data_h: DataBase, pnml_handlers: dict, x_bot_threshold: float) -> pd.DataFrame:
     """
     For each x point, calculate its regret.
-    :param x_test_array: x array that contains the x points that will be calculated
+    :param x_test: x array that contains the x points that will be calculated
     :param data_h: data handler class, used for training set.
-    :param pnml_h: The learner class handler.
+    :param pnml_handlers: The learner class handlers in a dict.
+    :param x_bot_threshold: Min valid value of |x_\bot|^2/|x|^2 to not considered as 0.
     :return: list of the calculated regret.
     """
 
     # Iterate on test samples
     t0 = time.time()
     ray_task_list = []
-    for i, x_test in enumerate(x_test_array):
-        ray_task = execute_x_test.remote(x_test, data_h, pnml_h, analytical_pnml_h)
+    for i, x_test_i in enumerate(x_test):
+        # Eval pNML
+        ray_task = execute_x_test.remote(x_test_i, data_h, copy.deepcopy(pnml_handlers), x_bot_threshold)
         ray_task_list.append(ray_task)
     logger.info('Finish submitting tasks in {:.2f} sec'.format(time.time() - t0))
 
@@ -51,19 +52,31 @@ def execute_x_vec(x_test_array: np.ndarray, data_h: DataBase,
 
 
 @ray.remote
-def execute_x_test(x_test: float, data_h: DataBase, pnml_h: BasePNML, analytical_pnml_h: AnalyticalPNML) -> dict:
-    phi_test = data_h.convert_point_to_features(x_test, data_h.model_degree)
-    y_hat_erm = pnml_h.predict_erm(phi_test)
-    nf = pnml_h.calc_norm_factor(phi_test, sigma_square=pnml_h.var)
-    regret = np.log(nf)
-    trainset_size, num_features = data_h.phi_train.shape
+def execute_x_test(x_test_i: float, data_h: DataBase, pnml_handlers: dict, x_bot_threshold: float) -> dict:
+    x_i = data_h.convert_point_to_features(x_test_i, data_h.model_degree)
 
-    # Analytical pNML
-    analytical_nf = analytical_pnml_h.calc_norm_factor(phi_test, sigma_square=pnml_h.var)
+    # Check which pnml to use
+    pnml_h, x_bot_square, x_norm_square = choose_pnml_h_type(pnml_handlers, x_i, x_bot_threshold)
+
+    # Calc normalization factor (nf)
+    pnml_h.reset()
+    nf = pnml_h.calc_norm_factor(x_i)
+    regret = np.log(nf)
+    success, msg = pnml_h.verify_pnml_results()
+
+    # Analytical pnml
+    analytical_nf = pnml_h.calc_analytical_norm_factor(x_i)
     analytical_regret = np.log(analytical_nf)
 
-    return {'x_test': x_test, 'nf': nf, 'regret': regret, 'y_hat_erm': y_hat_erm,
+    trainset_size, num_features = pnml_h.x_arr_train.shape
+    x_i = pnml_h.convert_to_column_vec(x_i)
+    y_hat_erm = float(pnml_h.theta_erm.T @ x_i)
+
+    pca_values = data_h.execute_pca_dim_reduction(x_i)
+    pca_values_trainset = data_h.pca_values_trainset
+    return {'x_test': x_test_i, 'nf': nf, 'regret': regret, 'y_hat_erm': y_hat_erm,
             'analytical_nf': analytical_nf, 'analytical_regret': analytical_regret,
-            'nf0': analytical_pnml_h.nf0, 'nf1': analytical_pnml_h.nf1, 'nf2': analytical_pnml_h.nf2,
-            'x_bot_square': analytical_pnml_h.x_bot_square,
-            'trainset_size': trainset_size, 'num_features': num_features}
+            'x_bot_square': x_bot_square, 'x_square': x_norm_square, 'success': success,
+            'trainset_size': trainset_size, 'num_features': num_features,
+            'pca_values': pca_values,
+            'pca_values_trainset': pca_values_trainset}

@@ -6,25 +6,10 @@ import pandas as pd
 
 from learner_utils.learner_helpers import fit_least_squares_estimator, calc_best_var
 from learner_utils.overparam_pnml_utils import OverparamPNML
+from learner_utils.pnml_utils import choose_pnml_h_type
 from learner_utils.underparam_pnml_utils import UnderparamPNML
 
 logger_default = logging.getLogger(__name__)
-
-
-def choose_pnml_h_type(pnml_handlers, x_i, x_bot_threshold):
-    overparam_pnml_h = pnml_handlers['overparam']
-    underparam_pnml_h = pnml_handlers['underparam']
-    assert isinstance(overparam_pnml_h, OverparamPNML)
-    assert isinstance(underparam_pnml_h, UnderparamPNML)
-
-    x_norm_square = np.linalg.norm(x_i) ** 2
-    if overparam_pnml_h.rank >= overparam_pnml_h.m:
-        pnml_h = underparam_pnml_h
-        x_bot_square = 0.0
-    else:
-        x_bot_square = overparam_pnml_h.calc_x_bot_square(x_i)
-        pnml_h = overparam_pnml_h if x_bot_square / x_norm_square > x_bot_threshold else underparam_pnml_h
-    return pnml_h, x_bot_square, x_norm_square
 
 
 def optimize_pnml_var_on_valset(pnml_handlers: dict, x_val, y_val, split_num: int,
@@ -166,15 +151,12 @@ def calc_pnml_performance(x_train: np.ndarray, y_train: np.ndarray,
     x_bot_threshold = pnml_optim_param['x_bot_threshold']
 
     # Compute best variance using validation set
-    valset_mean_var = var
     if not pnml_optim_param["skip_pnml_optimize_var"]:
         valset_mean_var = optimize_pnml_var_on_valset(pnml_handlers, x_val, y_val, split_num, x_bot_threshold, logger)
-
-    # Assign best var
-    pnml_handlers['underparam'].var = valset_mean_var
-    pnml_handlers['underparam'].var_input = valset_mean_var
-    pnml_handlers['overparam'].var = valset_mean_var
-    pnml_handlers['overparam'].var_input = valset_mean_var
+        pnml_handlers['underparam'].var = valset_mean_var
+        pnml_handlers['underparam'].var_input = valset_mean_var
+        pnml_handlers['overparam'].var = valset_mean_var
+        pnml_handlers['overparam'].var_input = valset_mean_var
 
     # Execute on test set
     df = calc_pnml_testset_performance(pnml_handlers, x_test, y_test, split_num,

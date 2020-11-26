@@ -148,7 +148,13 @@ def execute_reduce_dataset(x_arr: np.ndarray, y_vec: np.ndarray, set_size: int) 
     :param set_size: the desired set size
     :return: reduced set
     """
-    x_reduced, y_reduced = np.copy(x_arr[:set_size]), y_vec[:set_size]
+    x_reduced, y_reduced = np.copy(x_arr[:set_size]), np.copy(y_vec[:set_size])
+
+    # In case all y are the same we get a learner with 0 norm. We filter it
+    i = 1
+    while np.all(y_reduced == y_reduced[0]):
+        x_reduced, y_reduced = np.copy(x_arr[i:i+set_size]), np.copy(y_vec[i:i+set_size])
+        i += 1
     return x_reduced, y_reduced
 
 

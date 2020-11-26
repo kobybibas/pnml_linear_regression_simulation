@@ -9,16 +9,20 @@ from learner_utils.learner_helpers import fit_least_squares_estimator
 logger_default = logging.getLogger(__name__)
 
 
-def compute_pnml_logloss(phi_arr: np.ndarray, y_gt: np.ndarray, theta_genies: np.ndarray, var_list: list,
-                         nfs: np.ndarray) -> float:
-    var_list = np.array(var_list)
-    y_hat = np.array([x @ theta_genie for x, theta_genie in zip(phi_arr, theta_genies)]).squeeze()
-    prob = np.exp(-(y_hat - y_gt) ** 2 / (2 * var_list)) / np.sqrt(2 * np.pi * var_list)
 
-    # Normalize by the pnml normalization factor
-    prob /= nfs
-    logloss = -np.log(prob + np.finfo('float').eps)
-    return logloss
+
+def choose_pnml_h_type(pnml_handlers, x_i, x_bot_threshold):
+    overparam_pnml_h = pnml_handlers['overparam']
+    underparam_pnml_h = pnml_handlers['underparam']
+
+    x_norm_square = np.linalg.norm(x_i) ** 2
+    if overparam_pnml_h.rank >= overparam_pnml_h.m:
+        pnml_h = underparam_pnml_h
+        x_bot_square = 0.0
+    else:
+        x_bot_square = overparam_pnml_h.calc_x_bot_square(x_i)
+        pnml_h = overparam_pnml_h if x_bot_square / x_norm_square > x_bot_threshold else underparam_pnml_h
+    return pnml_h, x_bot_square, x_norm_square
 
 
 class BasePNML:

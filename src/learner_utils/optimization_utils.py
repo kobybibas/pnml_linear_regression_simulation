@@ -98,16 +98,16 @@ def execute_binary_lamb_search_svd(x_arr: np.ndarray, y_vec: np.ndarray, norm_co
     return lamb_right, optim_res_dict
 
 
-def find_upper_bound_lamb(phi_arr: np.ndarray, y: np.ndarray, max_norm: float) -> float:
+def find_upper_bound_lamb(phi_arr: np.ndarray, y: np.ndarray, norm_constraint: float) -> float:
     # Find lambda that produces norm that is lower than the max norm
     end, norm = 0.1, np.inf
-    while norm > max_norm:
+    while norm > norm_constraint:
         end *= 10
         norm = calc_theta_norm(fit_least_squares_estimator(phi_arr, y, end))
     return end
 
 
-def print_msg(optim_res_dict: dict, phi_arr, norm, norm_constraint, mse, logger):
+def print_msg(optim_res_dict: dict, phi_arr, norm_constraint, mse, logger):
     iter_num, start, end = optim_res_dict['iter'], optim_res_dict['start'][-1], optim_res_dict['end'][-1]
     norm_left, norm_right = optim_res_dict['norm_left'][-1], optim_res_dict['norm_right'][-1]
     msg = 'Optimization failed: '
@@ -152,7 +152,7 @@ def fit_norm_constrained_least_squares(x_arr: np.ndarray, y_vec: np.ndarray, nor
     mse = np.mean(calc_square_error(x_arr, y_vec, theta_fit))
 
     if optim_res_dict['success'] is False:
-        print_msg(optim_res_dict, x_arr, norm, norm_constraint, mse, logger)
+        print_msg(optim_res_dict, x_arr, norm_constraint, mse, logger)
     return theta_fit, lamb_fit, optim_res_dict
 
 
