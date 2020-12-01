@@ -41,7 +41,7 @@ def execute_experiment(cfg):
     ray_init(cfg.num_cpus, cfg.is_local_mode)
 
     # Execute x_test
-    x_test = np.arange(cfg['x_test_min'], cfg['x_test_max'], cfg['dx_test']).round(2)
+    x_test = np.arange(cfg['x_test_min'], cfg['x_test_max'], cfg['dx_test']).round(3)
 
     res_df = execute_x_vec(x_test, data_h, pnml_handlers, cfg.pnml_optim_param.x_bot_threshold)
     res_df['x_train'] = [cfg.x_train] * len(res_df)

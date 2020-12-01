@@ -1,7 +1,7 @@
 model_degree: 8
 x_test_max: 1.0
 x_test_min: 0
-dx_test: 0.01
+dx_test: 0.005
 x_train: [0.055, 0.105, 0.212, 0.271, 0.485, 0.523, 0.755, 0.88]
 y_train: [0.4, 0.2, 0.6, 0.55, 0.18, 0.2, 0.3, 0.2]
 data_type: fourier

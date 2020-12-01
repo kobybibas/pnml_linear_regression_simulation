@@ -1,15 +1,9 @@
 import os.path as osp
 from glob import glob
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import yaml
-
-cmap = plt.get_cmap("cubehelix")
-indices = np.linspace(0, cmap.N, 10)
-colors = [cmap(int(i)) for i in indices]
-
 
 
 def load_simulation_results(base_dirs: list):
@@ -38,52 +32,55 @@ def plot_confidence_interval(ax, x, mean, std, count, color: str):
     mean, std, count = np.array(mean), np.array(std), np.array(count)
     lower = mean - 1.960 * std / np.sqrt(count)
     upper = mean + 1.960 * std / np.sqrt(count)
-    ax.fill_between(x, upper, lower, color=color, alpha=0.2)  # std curves
+    ax.fill_between(x, upper, lower, color=color, alpha=0.3)  # std curves
 
 
-def plot_logloss(ax, res_dict: dict):
+def plot_logloss(ax, res_dict: dict, colors: list, alpha: float = 0.6):
     mean_df = res_dict["mean_df"]
     std_df = res_dict["std_df"]
     count_df = res_dict["count_df"]
     trainset_size = mean_df["trainset_size"].values
 
     key = "mn_test_logloss"
-    ax.plot(trainset_size, mean_df[key], label="Minimum norm", color="C0", alpha=0.6)
+    ax.plot(trainset_size, mean_df[key], label="Minimum norm", color=colors[0], alpha=alpha)
     plot_confidence_interval(
-        ax, trainset_size, mean_df[key], std_df[key], count_df[key], "C0"
+        ax, trainset_size, mean_df[key], std_df[key], count_df[key], colors[0]
     )
 
     key = "pnml_test_logloss"
-    ax.plot(trainset_size, mean_df[key], label="pNML", color="C1", alpha=0.6)
+    ax.plot(trainset_size, mean_df[key], label="pNML", color=colors[1], alpha=alpha)
     plot_confidence_interval(
-        ax, trainset_size, mean_df[key], std_df[key], count_df[key], "C1"
+        ax, trainset_size, mean_df[key], std_df[key], count_df[key], colors[1]
     )
     return ax
 
 
-def plot_regret(ax, res_dict: dict):
+def plot_regret(ax, res_dict: dict, colors: list, alpha: float = 0.6):
     mean_df = res_dict["mean_df"]
     std_df = res_dict["std_df"]
     count_df = res_dict["count_df"]
     trainsets = mean_df["trainset_size"].values
 
     key = "pnml_regret"
-    ax.plot(trainsets, mean_df[key], label="Empirical", color=colors[3], alpha=0.6)
+    ax.plot(trainsets, mean_df[key], label="Empirical", color=colors[0], alpha=alpha)
     plot_confidence_interval(
-        ax, trainsets, mean_df[key], std_df[key], count_df[key], colors[3],
+        ax, trainsets, mean_df[key], std_df[key], count_df[key], colors[0],
     )
 
     key = "analytical_pnml_regret"
-    ax.plot(trainsets, mean_df[key], label="Analytical", color=colors[-4], alpha=0.6)
-    plot_confidence_interval(ax, trainsets, mean_df[key], std_df[key], count_df[key], colors[-4], )
+    ax.plot(trainsets, mean_df[key], label="Analytical", color=colors[1], alpha=alpha)
+    plot_confidence_interval(ax, trainsets, mean_df[key], std_df[key], count_df[key], colors[1])
     return ax
 
 
-def calc_performance_per_regret(df: pd.DataFrame, num_features: int):
+def calc_performance_per_regret(df: pd.DataFrame):
     splits = df.split.unique()
-    df = df[df.trainset_size == num_features]
-
-    regrets = np.linspace(df.pnml_regret.min(), df.pnml_regret.max(), 100)
+    count, regrets = np.histogram(df["pnml_regret"],
+                                  bins=np.logspace(
+                                      np.log10(df.analytical_pnml_regret.min()),
+                                      np.log10(df.analytical_pnml_regret.max()),
+                                      100))
+    regrets = regrets[1:]
 
     pnml_losses, mn_losses, cdfs = [], [], []
     counts = np.zeros(len(regrets))

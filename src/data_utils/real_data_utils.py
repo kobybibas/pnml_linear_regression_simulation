@@ -15,14 +15,17 @@ from learner_utils.pnml_real_data_helper import calc_pnml_performance
 logger_default = logging.getLogger(__name__)
 
 
-def create_trainset_sizes_to_eval(trainset_sizes: list, n_train: int, n_features: int) -> list:
+def create_trainset_sizes_to_eval(trainset_sizes: list, n_train: int, n_features: int, max_train_samples: int) -> list:
     """
     Create list of training set sizes to evaluate if was not predefined in the cfg file.
     :param trainset_sizes: Predefined training set sizes.
     :param n_train: Training set size.
     :param n_features:  Number of feature
+    :param max_train_samples: Maximum allowed training set size
     :return: list of training set sizes.
     """
+    if max_train_samples > 0:
+        n_train = min(n_train, max_train_samples)
     if len(trainset_sizes) == 0:
         min_trainset = 2
         trainset_sizes_over_param = np.arange(min_trainset, n_features + 1).astype(int)
@@ -89,6 +92,8 @@ def choose_samples_for_debug(cfg, trainset: tuple, valset: tuple, testset: tuple
         x_test, y_test = x_test[:cfg.max_test_samples, :], y_test[:cfg.max_test_samples]
     if cfg.max_val_samples > 0:
         x_val, y_val = x_val[:cfg.max_val_samples, :], y_val[:cfg.max_val_samples]
+    if cfg.max_train_samples > 0:
+        x_train, y_train = x_train[:cfg.max_train_samples, :], y_train[:cfg.max_train_samples]
 
     return (x_train, y_train), (x_val, y_val), (x_test, y_test)
 
@@ -153,7 +158,7 @@ def execute_reduce_dataset(x_arr: np.ndarray, y_vec: np.ndarray, set_size: int) 
     # In case all y are the same we get a learner with 0 norm. We filter it
     i = 1
     while np.all(y_reduced == y_reduced[0]):
-        x_reduced, y_reduced = np.copy(x_arr[i:i+set_size]), np.copy(y_vec[i:i+set_size])
+        x_reduced, y_reduced = np.copy(x_arr[i:i + set_size]), np.copy(y_vec[i:i + set_size])
         i += 1
     return x_reduced, y_reduced
 

@@ -6,6 +6,7 @@ is_normalize_data: true         # Normalize the data such that each sample has n
 is_add_bias_term: true          # Add one more learn-able param for learning the bias.
 max_test_samples: 1000          # Constrain the test set size.
 max_val_samples: 200            # Constrain the val set size.
+max_train_samples: 10000        # Constrain the trainset set size.
 
 # Machine params
 is_local_mode: false            # Whether to use ray debug mode: using only 1 cpu.

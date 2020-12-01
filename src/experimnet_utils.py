@@ -7,6 +7,7 @@ import pandas as pd
 import ray
 
 from data_utils.synthetic_data_utils import DataBase
+from learner_utils.learner_helpers import calc_theta_norm
 from learner_utils.pnml_utils import choose_pnml_h_type
 
 logger = logging.getLogger(__name__)
@@ -72,11 +73,9 @@ def execute_x_test(x_test_i: float, data_h: DataBase, pnml_handlers: dict, x_bot
     x_i = pnml_h.convert_to_column_vec(x_i)
     y_hat_erm = float(pnml_h.theta_erm.T @ x_i)
 
-    pca_values = data_h.execute_pca_dim_reduction(x_i)
-    pca_values_trainset = data_h.pca_values_trainset
+    theta_erm_norm = calc_theta_norm(pnml_h.theta_erm)
     return {'x_test': x_test_i, 'nf': nf, 'regret': regret, 'y_hat_erm': y_hat_erm,
             'analytical_nf': analytical_nf, 'analytical_regret': analytical_regret,
             'x_bot_square': x_bot_square, 'x_square': x_norm_square, 'success': success,
             'trainset_size': trainset_size, 'num_features': num_features,
-            'pca_values': pca_values,
-            'pca_values_trainset': pca_values_trainset}
+            'theta_erm_norm': theta_erm_norm}

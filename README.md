@@ -63,6 +63,34 @@ jupyter-notebook pnml_syntetic.ipynb
 
 ### Real data
 
+The data is taken from: https://github.com/yaringal/DropoutUncertaintyExps/tree/master/UCI_Datasets
+
+Put it under ./data folder such that the project stracture is as follows
+
+```bash
+.
+├── README.md
+├── configs
+├── data
+│   └── UCI_Datasets
+│       ├── bostonHousing
+│       ├── concrete
+│       ├── energy
+│       ├── kin8nm
+│       ├── naval-propulsion-plant
+│       ├── power-plant
+│       ├── protein-tertiary-structure
+│       ├── wine-quality-red
+│       └── yacht
+├── notebooks
+├── output
+├── requirements.txt
+└── src
+
+```
+
+Then, execute the experimnet:
+
 ```bash
 cd src
 python main_real_data.py --config-name real_data dataset_name=bostonHousing; \
@@ -71,6 +99,7 @@ python main_real_data.py --config-name real_data dataset_name=energy; \
 python main_real_data.py --config-name real_data dataset_name=kin8nm; \
 python main_real_data.py --config-name real_data dataset_name=naval-propulsion-plant; \
 python main_real_data.py --config-name real_data dataset_name=power-plant; \
+python main_real_data.py --config-name real_data dataset_name=protein-tertiary-structure; \
 python main_real_data.py --config-name real_data dataset_name=wine-quality-red; \
 python main_real_data.py --config-name real_data dataset_name=yacht; 
 ```

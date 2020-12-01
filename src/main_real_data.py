@@ -28,7 +28,7 @@ def submit_dataset_experiment_jobs(dataset_name: str, cfg) -> pd.DataFrame:
                                                  )
         # Define train set size to evaluate
         n_train, n_features = trainset[0].shape
-        trainset_sizes = create_trainset_sizes_to_eval(cfg.trainset_sizes, n_train, n_features)
+        trainset_sizes = create_trainset_sizes_to_eval(cfg.trainset_sizes, n_train, n_features,cfg.max_train_samples)
         logger.info('{} split={}: [n_features n_train n_val n_test]=[{} {} {} {}]'.format(
             dataset_name, split, n_features, n_train, len(valset[0]), len(testset[0])))
         logger.info(trainset_sizes)
