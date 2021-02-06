@@ -40,17 +40,19 @@ def plot_logloss(ax, res_dict: dict, colors: list, alpha: float = 0.6):
     std_df = res_dict["std_df"]
     count_df = res_dict["count_df"]
     trainset_size = mean_df["trainset_size"].values
+    num_features = mean_df['num_features']
+    m_over_n = num_features / trainset_size
 
     key = "mn_test_logloss"
-    ax.plot(trainset_size, mean_df[key], label="Minimum norm", color=colors[0], alpha=alpha)
+    ax.plot(m_over_n, mean_df[key], label="Minimum norm", color=colors[0], alpha=alpha)
     plot_confidence_interval(
-        ax, trainset_size, mean_df[key], std_df[key], count_df[key], colors[0]
+        ax, m_over_n, mean_df[key], std_df[key], count_df[key], colors[0]
     )
 
     key = "pnml_test_logloss"
-    ax.plot(trainset_size, mean_df[key], label="pNML", color=colors[1], alpha=alpha)
+    ax.plot(m_over_n, mean_df[key], label="pNML", color=colors[1], alpha=alpha)
     plot_confidence_interval(
-        ax, trainset_size, mean_df[key], std_df[key], count_df[key], colors[1]
+        ax, m_over_n, mean_df[key], std_df[key], count_df[key], colors[1]
     )
     return ax
 
@@ -59,17 +61,19 @@ def plot_regret(ax, res_dict: dict, colors: list, alpha: float = 0.6):
     mean_df = res_dict["mean_df"]
     std_df = res_dict["std_df"]
     count_df = res_dict["count_df"]
-    trainsets = mean_df["trainset_size"].values
+    trainset_size = mean_df["trainset_size"].values
+    num_features = mean_df['num_features']
+    m_over_n = num_features / trainset_size
 
     key = "pnml_regret"
-    ax.plot(trainsets, mean_df[key], label="Empirical", color=colors[0], alpha=alpha)
+    ax.plot(m_over_n, mean_df[key], label="Empirical", color=colors[0], alpha=alpha)
     plot_confidence_interval(
-        ax, trainsets, mean_df[key], std_df[key], count_df[key], colors[0],
+        ax, m_over_n, mean_df[key], std_df[key], count_df[key], colors[0],
     )
 
     key = "analytical_pnml_regret"
-    ax.plot(trainsets, mean_df[key], label="Analytical", color=colors[1], alpha=alpha)
-    plot_confidence_interval(ax, trainsets, mean_df[key], std_df[key], count_df[key], colors[1])
+    ax.plot(m_over_n, mean_df[key], label="Analytical", color=colors[1], alpha=alpha)
+    plot_confidence_interval(ax, m_over_n, mean_df[key], std_df[key], count_df[key], colors[1])
     return ax
 
 
