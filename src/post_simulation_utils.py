@@ -36,7 +36,7 @@ def plot_confidence_interval(ax, x, mean, std, count, color: str, alpha=0.3):
 
 
 def plot_logloss(ax, res_dict: dict, colors: list, alpha: float = 0.6,
-                 label1="Minimum norm", label2="pNML", is_plot_first=True,alpha_conf=0.3):
+                 label1="Minimum norm", label2="pNML", is_plot_first=True, alpha_conf=0.3):
     mean_df = res_dict["mean_df"]
     std_df = res_dict["std_df"]
     count_df = res_dict["count_df"]
@@ -46,15 +46,16 @@ def plot_logloss(ax, res_dict: dict, colors: list, alpha: float = 0.6,
 
     if is_plot_first is True:
         key = "mn_test_logloss"
-        ax.plot(m_over_n, mean_df[key], label=label1, color=colors[0], alpha=alpha)
+        ax.plot(m_over_n, mean_df[key], label=label1,
+                color=colors[0], alpha=alpha)
         plot_confidence_interval(
-            ax, m_over_n, mean_df[key], std_df[key], count_df[key], colors[0],alpha=alpha_conf
+            ax, m_over_n, mean_df[key], std_df[key], count_df[key], colors[0], alpha=alpha_conf
         )
 
     key = "pnml_test_logloss"
     ax.plot(m_over_n, mean_df[key], label=label2, color=colors[1], alpha=alpha)
     plot_confidence_interval(
-        ax, m_over_n, mean_df[key], std_df[key], count_df[key], colors[1],alpha=alpha_conf
+        ax, m_over_n, mean_df[key], std_df[key], count_df[key], colors[1], alpha=alpha_conf
     )
     return ax
 
@@ -68,14 +69,17 @@ def plot_regret(ax, res_dict: dict, colors: list, alpha: float = 0.6):
     m_over_n = num_features / trainset_size
 
     key = "pnml_regret"
-    ax.plot(m_over_n, mean_df[key], label="Empirical", color=colors[0], alpha=alpha)
+    ax.plot(m_over_n, mean_df[key], label="Empirical",
+            color=colors[0], alpha=alpha)
     plot_confidence_interval(
         ax, m_over_n, mean_df[key], std_df[key], count_df[key], colors[0],
     )
 
     key = "analytical_pnml_regret"
-    ax.plot(m_over_n, mean_df[key], label="Analytical", color=colors[1], alpha=alpha)
-    plot_confidence_interval(ax, m_over_n, mean_df[key], std_df[key], count_df[key], colors[1])
+    ax.plot(m_over_n, mean_df[key], label="Analytical",
+            color=colors[1], alpha=alpha)
+    plot_confidence_interval(
+        ax, m_over_n, mean_df[key], std_df[key], count_df[key], colors[1])
     return ax
 
 
@@ -83,8 +87,10 @@ def calc_performance_per_regret(df: pd.DataFrame):
     splits = df.split.unique()
     count, regrets = np.histogram(df["pnml_regret"],
                                   bins=np.logspace(
-                                      np.log10(df.analytical_pnml_regret.min()),
-                                      np.log10(df.analytical_pnml_regret.max()),
+                                      np.log10(
+                                          df.analytical_pnml_regret.min()),
+                                      np.log10(
+                                          df.analytical_pnml_regret.max()),
                                       100))
     regrets = regrets[1:]
 

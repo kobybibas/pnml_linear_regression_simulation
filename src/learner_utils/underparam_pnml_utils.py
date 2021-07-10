@@ -1,5 +1,5 @@
 import logging
-
+from typing import Tuple
 import numpy as np
 
 from learner_utils.learner_helpers import fit_least_squares_estimator
@@ -31,7 +31,9 @@ class UnderparamPNML(BasePNML):
         x_test = self.convert_to_column_vec(x_test)
 
         # Project on empirical correlation matrix and divide by the associated eigenvalue
-        nf = 1 + np.sum(np.squeeze(self.u[:, :rank].T @ x_test) ** 2 / self.h[:rank] ** 2)
+        nf = 1 + \
+            np.sum(np.squeeze(self.u[:, :rank].T @
+                   x_test) ** 2 / self.h[:rank] ** 2)
         self.intermediate_dict['nf'] = nf
         return nf
 
@@ -42,7 +44,7 @@ class UnderparamPNML(BasePNML):
 
         # Add test to train
         logloss = 0.5 * np.log(2 * np.pi * var * (nf ** 2)) + (y_gt - self.theta_erm.T @ x_test) ** 2 / (
-                2 * var * (nf ** 2))
+            2 * var * (nf ** 2))
         return float(logloss)
 
     def calc_genie_logloss(self, x_test: np.ndarray, y_gt: float, nf: float) -> float:
@@ -52,10 +54,10 @@ class UnderparamPNML(BasePNML):
 
         # Add test to train
         logloss = 0.5 * np.log(2 * np.pi * var) + (y_gt - self.theta_erm.T @ x_test) ** 2 / (
-                2 * var * (nf ** 2))
+            2 * var * (nf ** 2))
         return float(logloss)
 
-    def verify_pnml_results(self) -> (bool, str):
+    def verify_pnml_results(self) -> Tuple[bool, str]:
         # Initialize output
         success, msg = True, ''
         nf = self.intermediate_dict['nf']
@@ -67,7 +69,7 @@ class UnderparamPNML(BasePNML):
             success = False
         return success, msg
 
-    def verify_var_results(self) -> (bool, str):
+    def verify_var_results(self) -> Tuple[bool, str]:
         # Initialize output
         success, msg = True, ''
         var_best = self.intermediate_dict['var_best']

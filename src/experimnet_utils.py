@@ -28,9 +28,11 @@ def execute_x_vec(x_test: np.ndarray, data_h: DataBase, pnml_handlers: dict, x_b
     ray_task_list = []
     for i, x_test_i in enumerate(x_test):
         # Eval pNML
-        ray_task = execute_x_test.remote(x_test_i, data_h, copy.deepcopy(pnml_handlers), x_bot_threshold)
+        ray_task = execute_x_test.remote(
+            x_test_i, data_h, copy.deepcopy(pnml_handlers), x_bot_threshold)
         ray_task_list.append(ray_task)
-    logger.info('Finish submitting tasks in {:.2f} sec'.format(time.time() - t0))
+    logger.info(
+        'Finish submitting tasks in {:.2f} sec'.format(time.time() - t0))
 
     # collect results
     res_list = []
@@ -44,7 +46,8 @@ def execute_x_vec(x_test: np.ndarray, data_h: DataBase, pnml_handlers: dict, x_b
 
         # Report
         x_test = res_i['x_test']
-        logger.info('[{:04d}/{}] Finish x={}. in {:3.1f}s.'.format(job_num, total_jobs - 1, x_test, time.time() - t1))
+        logger.info('[{:04d}/{}] Finish x={}. in {:3.1f}s.'.format(job_num,
+                    total_jobs - 1, x_test, time.time() - t1))
 
     # Save to file
     res_df = pd.DataFrame(res_list)
@@ -57,7 +60,8 @@ def execute_x_test(x_test_i: float, data_h: DataBase, pnml_handlers: dict, x_bot
     x_i = data_h.convert_point_to_features(x_test_i, data_h.model_degree)
 
     # Check which pnml to use
-    pnml_h, x_bot_square, x_norm_square = choose_pnml_h_type(pnml_handlers, x_i, x_bot_threshold)
+    pnml_h, x_bot_square, x_norm_square = choose_pnml_h_type(
+        pnml_handlers, x_i, x_bot_threshold)
 
     # Calc normalization factor (nf)
     pnml_h.reset()

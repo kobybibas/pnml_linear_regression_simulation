@@ -27,7 +27,8 @@ def optimize_pnml_var_on_valset(pnml_handlers: dict, x_val, y_val, split_num: in
         nf, loss = -1, -1
 
         # Check projection on orthogonal subspace
-        pnml_h, x_bot_square, x_norm_square = choose_pnml_h_type(pnml_handlers, x_i, x_bot_threshold)
+        pnml_h, x_bot_square, x_norm_square = choose_pnml_h_type(
+            pnml_handlers, x_i, x_bot_threshold)
 
         # Find best sigma square
         pnml_h.reset()
@@ -77,7 +78,8 @@ def calc_pnml_testset_performance(pnml_handlers: dict, x_test: np.ndarray, y_tes
         t0 = time.time()
 
         # Check projection on orthogonal subspace
-        pnml_h, x_bot_square, x_norm_square = choose_pnml_h_type(pnml_handlers, x_i, x_bot_threshold)
+        pnml_h, x_bot_square, x_norm_square = choose_pnml_h_type(
+            pnml_handlers, x_i, x_bot_threshold)
         x_norm_square_list.append(x_norm_square)
 
         # calc normalization factor (nf)
@@ -152,7 +154,8 @@ def calc_pnml_performance(x_train: np.ndarray, y_train: np.ndarray,
 
     # Compute best variance using validation set
     if not pnml_optim_param["skip_pnml_optimize_var"]:
-        valset_mean_var = optimize_pnml_var_on_valset(pnml_handlers, x_val, y_val, split_num, x_bot_threshold, logger)
+        valset_mean_var = optimize_pnml_var_on_valset(
+            pnml_handlers, x_val, y_val, split_num, x_bot_threshold, logger)
         pnml_handlers['underparam'].var = valset_mean_var
         pnml_handlers['underparam'].var_input = valset_mean_var
         pnml_handlers['overparam'].var = valset_mean_var

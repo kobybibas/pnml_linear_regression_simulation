@@ -1,15 +1,17 @@
 import logging
-
+from typing import Tuple
 import numpy as np
 import numpy.linalg as npl
 import scipy.optimize as optimize
 from scipy.optimize import NonlinearConstraint
 
-from learner_utils.learner_helpers import calc_theta_norm, fit_least_squares_estimator, calc_square_error
+from learner_utils.learner_helpers import (calc_square_error, calc_theta_norm,
+                                           fit_least_squares_estimator)
 
 
 def calc_norm_with_svd(lamb: float, vt_y_square: np.ndarray, h_square: np.ndarray) -> float:
-    norm = np.sum(vt_y_square[:len(h_square)] * h_square / (h_square + lamb) ** 2)
+    norm = np.sum(vt_y_square[:len(h_square)] *
+                  h_square / (h_square + lamb) ** 2)
     return float(norm)
 
 
@@ -23,7 +25,7 @@ def check_tol_func(norm: float, norm_constraint: float, tol_func: float) -> bool
 def execute_binary_lamb_search_svd(x_arr: np.ndarray, y_vec: np.ndarray, norm_constraint: float,
                                    lamb_left: float, lamb_right: float,
                                    tol_func: float = 1e-6, max_iter: int = 1e3,
-                                   n_iter_for_scale: int = 10) -> (float, dict):
+                                   n_iter_for_scale: int = 10) -> Tuple[float, dict]:
     # Calculate constants
     i, eps = 0, np.finfo('float').eps
     u, h, vt = npl.svd(x_arr.T, full_matrices=True)
@@ -31,7 +33,8 @@ def execute_binary_lamb_search_svd(x_arr: np.ndarray, y_vec: np.ndarray, norm_co
     vt_y_square = (vt @ y_vec) ** 2
 
     # Initialize edges
-    norm_left = calc_theta_norm(fit_least_squares_estimator(x_arr, y_vec, lamb=lamb_left))
+    norm_left = calc_theta_norm(
+        fit_least_squares_estimator(x_arr, y_vec, lamb=lamb_left))
     norm_right = calc_norm_with_svd(lamb_right, vt_y_square, h_square)
     # norm_right = calc_theta_norm(fit_least_squares_estimator(x_arr, y_vec, lamb=lamb_right))
 
@@ -59,7 +62,8 @@ def execute_binary_lamb_search_svd(x_arr: np.ndarray, y_vec: np.ndarray, norm_co
 
     while True:
         # Update the middle lambda norm, first few iteration in more close to start
-        middle = 0.5 * (lamb_left + lamb_right) if i > n_iter_for_scale else 0.5 * (lamb_left + lamb_right / 10)
+        middle = 0.5 * (lamb_left + lamb_right) if i > n_iter_for_scale else 0.5 * \
+            (lamb_left + lamb_right / 10)
         norm_middle = calc_norm_with_svd(middle, vt_y_square, h_square)
         # norm_middle= calc_theta_norm(fit_least_squares_estimator(x_arr, y_vec, lamb=middle))
 
@@ -111,7 +115,8 @@ def print_msg(optim_res_dict: dict, phi_arr, norm_constraint, mse, logger):
     iter_num, start, end = optim_res_dict['iter'], optim_res_dict['start'][-1], optim_res_dict['end'][-1]
     norm_left, norm_right = optim_res_dict['norm_left'][-1], optim_res_dict['norm_right'][-1]
     msg = 'Optimization failed: '
-    msg += optim_res_dict['message'] + f' arr.shape={phi_arr.shape}. iter={iter_num} '
+    msg += optim_res_dict['message'] + \
+        f' arr.shape={phi_arr.shape}. iter={iter_num} '
     msg += f' lambda [left right[=[{start} {end}] '
     msg += f'norm [left right constraint]=[{norm_left} {norm_right} {norm_constraint}] mse={mse}.'
     logger.warning(msg)
@@ -119,7 +124,7 @@ def print_msg(optim_res_dict: dict, phi_arr, norm_constraint, mse, logger):
 
 def fit_norm_constrained_least_squares(x_arr: np.ndarray, y_vec: np.ndarray, norm_constraint: float,
                                        tol_func: float = 1e-6, max_iter: int = 1e4,
-                                       logger=logging.getLogger(__name__)) -> (np.ndarray, float, dict):
+                                       logger=logging.getLogger(__name__)) -> Tuple[np.ndarray, float, dict]:
     """
     Fit least squares estimator. Constrain it by the max norm constrain
     :param x_arr: data matrix. Each row represents an example.
@@ -142,7 +147,8 @@ def fit_norm_constrained_least_squares(x_arr: np.ndarray, y_vec: np.ndarray, nor
         return theta_fit, lamb_fit, optim_res_dict
 
     # Initialize boundaries and find the lambda that satisfies the max norm constrain
-    lamb_left, lamb_right = 0.0, find_upper_bound_lamb(x_arr, y_vec, norm_constraint)
+    lamb_left, lamb_right = 0.0, find_upper_bound_lamb(
+        x_arr, y_vec, norm_constraint)
     lamb_fit, optim_res_dict = execute_binary_lamb_search_svd(x_arr, y_vec, norm_constraint, lamb_left, lamb_right,
                                                               tol_func=tol_func, max_iter=max_iter)
 
@@ -176,7 +182,8 @@ def optimize_pnml_var(epsilon_square_gt: float, epsilon_square_list: list, y_tra
 
     def calc_genie_probs(sigma_fit):
         var_fit = sigma_fit ** 2
-        genies_probs = np.exp(-epsilon_square_list / (2 * var_fit + eps)) / np.sqrt(2 * np.pi * var_fit + eps)
+        genies_probs = np.exp(-epsilon_square_list / (2 *
+                              var_fit + eps)) / np.sqrt(2 * np.pi * var_fit + eps)
         return genies_probs
 
     def calc_nf(sigma_fit):
@@ -190,13 +197,15 @@ def optimize_pnml_var(epsilon_square_gt: float, epsilon_square_list: list, y_tra
     def calc_jac(sigma_fit):
         var_fit = sigma_fit ** 2
         nf_fit = calc_nf(sigma_fit)
-        jac = (1 / (2 * nf_fit * var_fit ** 2 + eps)) * (var_fit - nf_fit * epsilon_square_gt)
+        jac = (1 / (2 * nf_fit * var_fit ** 2 + eps)) * \
+            (var_fit - nf_fit * epsilon_square_gt)
         return jac
 
     def calc_loss(sigma_fit):
         var_fit = sigma_fit ** 2
         nf_fit = calc_nf(sigma_fit)
-        loss = 0.5 * np.log(2 * np.pi * var_fit + eps) + epsilon_square_gt / (2 * var_fit + eps) + np.log(nf_fit + eps)
+        loss = 0.5 * np.log(2 * np.pi * var_fit + eps) + \
+            epsilon_square_gt / (2 * var_fit + eps) + np.log(nf_fit + eps)
         return loss
 
     def is_valid_sigma(sigma_fit) -> bool:

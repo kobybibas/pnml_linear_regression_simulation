@@ -18,7 +18,8 @@ logger = logging.getLogger(__name__)
 
 def submit_dataset_experiment_jobs(dataset_name: str, cfg) -> pd.DataFrame:
     logger_file_path = logging.getLoggerClass().root.handlers[1].baseFilename
-    splits = cfg.splits if len(cfg.splits) > 0 else get_set_splits(dataset_name, cfg.data_dir)
+    splits = cfg.splits if len(cfg.splits) > 0 else get_set_splits(
+        dataset_name, cfg.data_dir)
     task_list = []
     for split in splits:
         trainset, valset, testset = get_uci_data(dataset_name, cfg.data_dir, split,
@@ -28,7 +29,8 @@ def submit_dataset_experiment_jobs(dataset_name: str, cfg) -> pd.DataFrame:
                                                  )
         # Define train set size to evaluate
         n_train, n_features = trainset[0].shape
-        trainset_sizes = create_trainset_sizes_to_eval(cfg.trainset_sizes, n_train, n_features,cfg.max_train_samples)
+        trainset_sizes = create_trainset_sizes_to_eval(
+            cfg.trainset_sizes, n_train, n_features, cfg.max_train_samples)
         logger.info('{} split={}: [n_features n_train n_val n_test]=[{} {} {} {}]'.format(
             dataset_name, split, n_features, n_train, len(valset[0]), len(testset[0])))
         logger.info(trainset_sizes)
@@ -36,7 +38,8 @@ def submit_dataset_experiment_jobs(dataset_name: str, cfg) -> pd.DataFrame:
         # Submit tasks
         for i, trainset_size in enumerate(trainset_sizes):
             # Reduce training set size
-            trainset_input, valset_input, testset_input = choose_samples_for_debug(cfg, trainset, valset, testset)
+            trainset_input, valset_input, testset_input = choose_samples_for_debug(
+                cfg, trainset, valset, testset)
             x_train_reduced, y_train_reduced = execute_reduce_dataset(trainset_input[0], trainset_input[1],
                                                                       trainset_size)
             logger.info('{} split={} train.shape={}.\tTrainset svd [largest smallest]={}'.format(
@@ -48,7 +51,8 @@ def submit_dataset_experiment_jobs(dataset_name: str, cfg) -> pd.DataFrame:
                                             split, trainset_size, dataset_name,
                                             cfg.is_execute_empirical_pnml,
                                             pnml_optim_param=cfg.pnml_optim_param,
-                                            debug_print=cfg.fast_dev_run or len(cfg.test_idxs) > 0,
+                                            debug_print=cfg.fast_dev_run or len(
+                                                cfg.test_idxs) > 0,
                                             logger_file_path=logger_file_path)
             task_list.append(ray_task)
     return task_list
@@ -71,7 +75,8 @@ def collect_dataset_experiment_results(ray_task_list: list):
 
         # Report
         dataset_name = res_i['dataset_name'][0]
-        n_trainset, n_valset, n_testset = res_i['trainset_size'][0], res_i['valset_size'][0], res_i['testset_size'][0]
+        n_trainset, n_valset, n_testset = res_i['trainset_size'][
+            0], res_i['valset_size'][0], res_i['testset_size'][0]
         logger.info('[{:04d}/{}] {}. Size [train val test]=[{:03d} {} {}] in {:3.1f}s.'.format(
             job_num, total_jobs - 1, dataset_name, n_trainset, n_valset, n_testset, time.time() - t1))
 
@@ -89,7 +94,7 @@ def execute_real_datasets_experiment(cfg):
     out_path = os.getcwd()
 
     # Move from output directory to src
-    os.chdir(osp.join(hydra.utils.get_original_cwd(),'src'))
+    os.chdir(osp.join(hydra.utils.get_original_cwd(), 'src'))
     logger.info('[cwd out_dir]=[{} {}]'.format(os.getcwd(), out_path))
 
     # Initialize multiprocess. Every trainset size in a separate process
@@ -98,7 +103,8 @@ def execute_real_datasets_experiment(cfg):
     # Iterate on datasets: send jobs
     t1 = time.time()
     ray_task_list = submit_dataset_experiment_jobs(cfg.dataset_name, cfg)
-    logger.info('Submitted {} in {:.2f} sec'.format(cfg.dataset_name, time.time() - t1))
+    logger.info('Submitted {} in {:.2f} sec'.format(
+        cfg.dataset_name, time.time() - t1))
 
     # Collect results
     res_df = collect_dataset_experiment_results(ray_task_list)

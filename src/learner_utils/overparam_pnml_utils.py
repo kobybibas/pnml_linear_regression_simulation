@@ -1,5 +1,5 @@
 import logging
-
+from typing import Tuple
 import numpy as np
 import scipy.signal
 
@@ -31,7 +31,8 @@ class OverparamPNML(BasePNML):
         self.y_interval = self.create_y_interval()
 
         # For analytical
-        self.theta_mn_P_N_theta_mn = self.calc_trainset_subspace_projection(self.theta_erm)
+        self.theta_mn_P_N_theta_mn = self.calc_trainset_subspace_projection(
+            self.theta_erm)
 
     def fit_least_squares_estimator(self, phi_arr: np.ndarray, y: np.ndarray, lamb: float = 0.0) -> np.ndarray:
         assert lamb == 0.0
@@ -44,7 +45,8 @@ class OverparamPNML(BasePNML):
         self.intermediate_dict['fitted_lamb_list'].append(lamb)
         if 'optim_success' not in self.intermediate_dict:
             self.intermediate_dict['optim_success'] = []
-        self.intermediate_dict['optim_success'].append(optim_res_dict['success'])
+        self.intermediate_dict['optim_success'].append(
+            optim_res_dict['success'])
         return theta
 
     def calc_x_bot_square(self, x_test) -> float:
@@ -75,7 +77,8 @@ class OverparamPNML(BasePNML):
 
         # Calc genies predictions
         thetas = self.calc_genie_thetas(x_test, self.y_interval)
-        probs_of_genies = self.calc_probs_of_genies(x_test, self.y_interval, thetas)
+        probs_of_genies = self.calc_probs_of_genies(
+            x_test, self.y_interval, thetas)
         probs_of_genies_smooth = self.filter_genie_probs(probs_of_genies)
         self.intermediate_dict['thetas'] = thetas
         self.intermediate_dict['probs_of_genies'] = probs_of_genies
@@ -115,7 +118,8 @@ class OverparamPNML(BasePNML):
 
         # shift around the erm
         if x_test is not None:
-            y_to_eval = self.shift_y_interval(x_test, self.theta_erm, y_to_eval)
+            y_to_eval = self.shift_y_interval(
+                x_test, self.theta_erm, y_to_eval)
         return y_to_eval
 
     def find_y_interval_edges(self, x_test: np.ndarray) -> float:
@@ -127,18 +131,20 @@ class OverparamPNML(BasePNML):
         prob_genie, y_max = 1.0, 1e-1
         while prob_genie > 0.0:
             y_max *= 10
-            y_target = self.shift_y_interval(x_test, self.theta_erm, y_max)[None]
+            y_target = self.shift_y_interval(
+                x_test, self.theta_erm, y_max)[None]
             theta_genie = self.calc_genie_thetas(x_test, y_target)
 
             # Calc genies predictions
-            prob_genie = self.calc_probs_of_genies(x_test, y_target, theta_genie)
+            prob_genie = self.calc_probs_of_genies(
+                x_test, y_target, theta_genie)
             prob_genie = float(prob_genie)
 
         # Extra margin
         y_max *= 100
         return y_max
 
-    def verify_pnml_results(self) -> (bool, str):
+    def verify_pnml_results(self) -> Tuple[bool, str]:
         success, msg = True, ''
         nf = self.intermediate_dict['nf']
         probs_of_genies = self.intermediate_dict['probs_of_genies']
@@ -149,7 +155,8 @@ class OverparamPNML(BasePNML):
             success = False
         if probs_of_genies[-1] > np.finfo('float').eps:
             # Expected probability 0 at the edges
-            msg += 'Interval is too small prob={}. '.format(probs_of_genies[-1])
+            msg += 'Interval is too small prob={}. '.format(
+                probs_of_genies[-1])
             success = False
         # if not np.all(np.diff(probs_of_genies) > 0):
         #     # Expected probability 0 at the edges
@@ -174,7 +181,7 @@ class OverparamPNML(BasePNML):
         y_vec = y_interval + y_pred
         return np.squeeze(y_vec)
 
-    def calc_genie_thetas(self, x_test: np.ndarray, y_to_eval: np.ndarray) -> (list, list):
+    def calc_genie_thetas(self, x_test: np.ndarray, y_to_eval: np.ndarray) -> [list, list]:
         # Each thetas entry is corresponds to entry on y_to_eval
         thetas = []
         y_erm = float(self.theta_erm.T @ x_test)
@@ -182,7 +189,8 @@ class OverparamPNML(BasePNML):
             if y == y_erm:
                 theta = self.theta_erm
             else:
-                x_arr, y_vec = self.add_test_to_train(self.x_arr_train, x_test, self.y_vec_train, y)
+                x_arr, y_vec = self.add_test_to_train(
+                    self.x_arr_train, x_test, self.y_vec_train, y)
                 theta = self.fit_least_squares_estimator(x_arr, y_vec)
             thetas.append(theta)
         return thetas
@@ -198,10 +206,11 @@ class OverparamPNML(BasePNML):
         var = self.var
         y_hat = np.array([theta.T @ x_test for theta in thetas]).squeeze()
         y_trained = y_trained.squeeze()
-        prob_genies = np.exp(-(y_trained - y_hat) ** 2 / (2 * var)) / np.sqrt(2 * np.pi * var)
+        prob_genies = np.exp(-(y_trained - y_hat) ** 2 /
+                             (2 * var)) / np.sqrt(2 * np.pi * var)
         return prob_genies.squeeze()
 
-    def optimize_var(self, x_test: np.ndarray, y_gt: float) -> (float, float):
+    def optimize_var(self, x_test: np.ndarray, y_gt: float) -> Tuple[float, float]:
         nf = self.calc_norm_factor(x_test)
         success, msg = self.verify_pnml_results()
         if success is False:
@@ -210,18 +219,21 @@ class OverparamPNML(BasePNML):
 
         # Pre calc optimize sigma
         thetas = self.intermediate_dict['thetas']
-        phi_arr, ys = self.add_test_to_train(self.x_arr_train, x_test, self.y_vec_train, y_gt)
+        phi_arr, ys = self.add_test_to_train(
+            self.x_arr_train, x_test, self.y_vec_train, y_gt)
         theta_genie_gt = self.fit_least_squares_estimator(phi_arr, ys)
 
         # Calc best sigma
         y_vec = self.y_interval
-        epsilon_square_list = (y_vec - np.array([theta.T @ x_test for theta in thetas]).squeeze()) ** 2
+        epsilon_square_list = (
+            y_vec - np.array([theta.T @ x_test for theta in thetas]).squeeze()) ** 2
         epsilon_square_true = (y_gt - theta_genie_gt.T @ x_test) ** 2
-        var_best = optimize_pnml_var(epsilon_square_true, epsilon_square_list, y_vec, self.var_optim_param)
+        var_best = optimize_pnml_var(
+            epsilon_square_true, epsilon_square_list, y_vec, self.var_optim_param)
         self.intermediate_dict['var_best'] = var_best
         return var_best
 
-    def verify_var_results(self) -> (bool, str):
+    def verify_var_results(self) -> Tuple[bool, str]:
         # Initialize output
         success, msg = True, ''
         var_best = self.intermediate_dict['var_best']
@@ -246,7 +258,9 @@ class OverparamPNML(BasePNML):
 
         # Under param
         # Project on empirical correlation matrix and divide by the associated eigenvalue
-        nf0 = 1 + np.sum(np.squeeze(self.u[:, :rank].T @ x_test) ** 2 / self.h_square[:rank])
+        nf0 = 1 + \
+            np.sum(np.squeeze(self.u[:, :rank].T @
+                   x_test) ** 2 / self.h_square[:rank])
         self.intermediate_dict['nf0'] = nf0
 
         # ||x_\bot||^2
@@ -269,10 +283,11 @@ class OverparamPNML(BasePNML):
         var = self.var
 
         # Add test to train
-        x_arr, y_vec = self.add_test_to_train(self.x_arr_train, x_test, self.y_vec_train, y_gt)
+        x_arr, y_vec = self.add_test_to_train(
+            self.x_arr_train, x_test, self.y_vec_train, y_gt)
         theta_genie = self.fit_least_squares_estimator(x_arr, y_vec, self.lamb)
         logloss = 0.5 * np.log(2 * np.pi * var * (nf ** 2)) + (y_gt - theta_genie.T @ x_test) ** 2 / (
-                2 * var)
+            2 * var)
         return float(logloss)
 
     def calc_genie_logloss(self, x_test: np.ndarray, y_gt: float, nf: float = 1.0) -> float:
@@ -281,29 +296,34 @@ class OverparamPNML(BasePNML):
         var = self.var
 
         # Add test to train
-        x_arr, y_vec = self.add_test_to_train(self.x_arr_train, x_test, self.y_vec_train, y_gt)
+        x_arr, y_vec = self.add_test_to_train(
+            self.x_arr_train, x_test, self.y_vec_train, y_gt)
         theta_genie = self.fit_least_squares_estimator(x_arr, y_vec, self.lamb)
-        logloss = 0.5 * np.log(2 * np.pi * var) + (y_gt - theta_genie.T @ x_test) ** 2 / (2 * var)
+        logloss = 0.5 * np.log(2 * np.pi * var) + \
+            (y_gt - theta_genie.T @ x_test) ** 2 / (2 * var)
         return float(logloss)
 
     def plot_genies_prob(self):
         import matplotlib.pyplot as plt
         fig, axs = plt.subplots(3, 1, sharex=True)
         ax = axs[0]
-        ax.plot(self.y_interval, self.intermediate_dict['probs_of_genies'], '*')
+        ax.plot(self.y_interval,
+                self.intermediate_dict['probs_of_genies'], '*')
         ax.set_xscale('log')
         ax.set_ylabel('Prob')
         ax.grid()
 
         ax = axs[1]
-        norms = [calc_theta_norm(theta_i) for theta_i in self.intermediate_dict['thetas']]
+        norms = [calc_theta_norm(theta_i)
+                 for theta_i in self.intermediate_dict['thetas']]
         ax.plot(self.y_interval, norms, '*')
         ax.set_ylabel('||theta||')
         ax.axhline(self.norm_constraint, color='r')
         ax.grid()
 
         ax = axs[2]
-        ax.plot(self.y_interval, self.intermediate_dict['probs_of_genies_smooth'], '*')
+        ax.plot(self.y_interval,
+                self.intermediate_dict['probs_of_genies_smooth'], '*')
         ax.set_ylabel('Prob smooth', '*')
         ax.set_xlabel('y')
         ax.grid()

@@ -1,18 +1,19 @@
 import logging
+from typing import Tuple
 
 import numpy as np
 import pandas as pd
 
-from learner_utils.learner_helpers import calc_best_var
-from learner_utils.learner_helpers import calc_square_error, calc_logloss
-from learner_utils.learner_helpers import calc_theta_norm, fit_least_squares_estimator
+from learner_utils.learner_helpers import (calc_best_var, calc_logloss,
+                                           calc_square_error, calc_theta_norm,
+                                           fit_least_squares_estimator)
 
 logger_default = logging.getLogger(__name__)
 
 
 def calc_mn_learner_performance(x_train: np.ndarray, y_train: np.ndarray, x_val: np.ndarray, y_val: np.ndarray,
                                 x_test: np.ndarray, y_test: np.ndarray,
-                                logger=logger_default) -> (pd.DataFrame, np.ndarray, float):
+                                logger=logger_default) -> Tuple[pd.DataFrame, np.ndarray, float]:
     theta_mn = fit_least_squares_estimator(x_train, y_train)
     mn_valset_var = calc_best_var(x_val, y_val, theta_mn)
 

@@ -1,4 +1,5 @@
 import numpy as np
+from typing import Tuple
 
 
 def normalize_vec(v):
@@ -23,7 +24,7 @@ def execute_gram_schmidt(arr_input: np.ndarray) -> np.ndarray:
     return arr
 
 
-def create_data_matrix(subspace_arr: np.ndarray, y_subspace: np.ndarray, set_size: int) -> (np.ndarray, np.ndarray):
+def create_data_matrix(subspace_arr: np.ndarray, y_subspace: np.ndarray, set_size: int) -> Tuple[np.ndarray, np.ndarray]:
     """
     Create data from a linear combination of a given array's columns.
     :param subspace_arr: array the used as a subspace, the data is generate by a linear combination of the columns
@@ -35,8 +36,10 @@ def create_data_matrix(subspace_arr: np.ndarray, y_subspace: np.ndarray, set_siz
     x_arr, labels = [], []
     for i in range(set_size):
         # alphas = np.random.randn(effective_subspace)
-        alphas = 2 * np.random.rand(effective_subspace) - 1  # uniform distribution over [-1,1]
-        x_i = np.array([alpha_i * v_i for alpha_i, v_i in zip(alphas, subspace_arr.T)]).sum(axis=0)
+        # uniform distribution over [-1,1]
+        alphas = 2 * np.random.rand(effective_subspace) - 1
+        x_i = np.array([alpha_i * v_i for alpha_i,
+                       v_i in zip(alphas, subspace_arr.T)]).sum(axis=0)
         x_arr.append(x_i)
 
         # Create the label, multiply the subspace labels by the same linear combination as the data
@@ -67,19 +70,18 @@ def create_data(feature_size: int = 2000, effective_subspace: int = 60,
                 projections.append(float(v1.T @ v2))
         print('Maximum inner product: ', np.max(projections))
 
-    # # The true model parameters
-    # theta_star = np.random.randn(effective_subspace)
-    # theta_star = np.expand_dims(normalize_vec(theta_star), 1)
-
-    # Create dataset
-    # y = a1 v1 + a2 v2 + ... a100 v100
-
-    # Every row corresponds to feature vector
-    # X = [x_1, x_2, ..., x_{trainset_size}]^T
+    """ 
+    The true model parameters
+    theta_star = np.random.randn(effective_subspace)
+    theta_star = np.expand_dims(normalize_vec(theta_star), 1)
+    Create dataset y = a1 v1 + a2 v2 + ... a100 v100
+    Every row corresponds to feature vector
+    X = [x_1, x_2, ..., x_{trainset_size}]^T
+    """
     x_train, y_train = create_data_matrix(arr_ort, y_subspace, trainset_size)
     x_test, y_test = create_data_matrix(arr_ort, y_subspace, testset_size)
 
-    #### different way to create the labels
+    # different way to create the labels
     # The true model parameters
     theta_star = np.random.randn(feature_size)
     theta_star = np.expand_dims(normalize_vec(theta_star), 1)

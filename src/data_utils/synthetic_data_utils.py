@@ -3,7 +3,6 @@ from abc import abstractmethod
 
 import numpy as np
 import numpy.linalg as npl
-
 from learner_utils.learner_helpers import fit_least_squares_estimator
 
 logger = logging.getLogger(__name__)
@@ -22,13 +21,16 @@ class DataBase:
         self.phi_train = self.create_train_features()
         logger.info('self.phi_train.shape: {}'.format(self.phi_train.shape))
         trainset_size, _ = self.phi_train.shape
-        self.u, self.h_square, self.v_t = npl.svd(self.phi_train.T @ self.phi_train)
+        self.u, self.h_square, self.v_t = npl.svd(
+            self.phi_train.T @ self.phi_train)
         assert trainset_size == len(self.y)
 
         theta_erm = fit_least_squares_estimator(self.phi_train, self.y)
         mse = np.mean((self.y - np.squeeze(self.phi_train @ theta_erm)) ** 2)
-        logger.info('Training set: mse={}, h_square: {}'.format(mse, self.h_square ** 2))
-        self.pca_values_trainset = [self.execute_pca_dim_reduction(phi_i) for phi_i in self.phi_train]
+        logger.info('Training set: mse={}, h_square: {}'.format(
+            mse, self.h_square ** 2))
+        self.pca_values_trainset = [self.execute_pca_dim_reduction(
+            phi_i) for phi_i in self.phi_train]
 
     def execute_pca_dim_reduction(self, x_i):
         projections = self.u.T @ x_i
@@ -42,7 +44,8 @@ class DataBase:
         """
         phi_train = []
         for x_i in self.x:
-            phi_train_i = self.convert_point_to_features(x_i, self.model_degree)
+            phi_train_i = self.convert_point_to_features(
+                x_i, self.model_degree)
 
             # Convert column vector to raw and append
             phi_train.append(np.squeeze(phi_train_i.T))
@@ -62,7 +65,8 @@ class DataBase:
 
             # Matrix of training feature [phi0;phi1;phi2...]. phi is the features phi(x)
             self.phi_train = self.create_train_features()
-            logger.info('self.phi_train.shape: {}'.format(self.phi_train.shape))
+            logger.info('self.phi_train.shape: {}'.format(
+                self.phi_train.shape))
             u, h, v_t = npl.svd(self.phi_train)
             logger.info('sweep_x_find_h_square')
             logger.info('    x = {}'.format(self.x))

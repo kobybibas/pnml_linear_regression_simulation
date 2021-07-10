@@ -25,7 +25,8 @@ def fit_least_squares_estimator(x_arr: np.ndarray, y_vec: np.ndarray, lamb: floa
     else:  # minimum norm
         # inv = npl.pinv(x_arr @ x_arr.T)
         # theta = x_arr.T @ inv @ y_vec
-        reg = LinearRegression(fit_intercept=False).fit(x_arr, y_vec)  # using scipy is more stable
+        reg = LinearRegression(fit_intercept=False).fit(
+            x_arr, y_vec)  # using scipy is more stable
         theta = reg.coef_
 
     theta = np.expand_dims(theta, 1)

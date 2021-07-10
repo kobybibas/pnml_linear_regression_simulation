@@ -1,14 +1,12 @@
 import logging
 from abc import ABCMeta, abstractmethod
-
+from typing import Tuple
 import numpy as np
 import numpy.linalg as npl
 
 from learner_utils.learner_helpers import fit_least_squares_estimator
 
 logger_default = logging.getLogger(__name__)
-
-
 
 
 def choose_pnml_h_type(pnml_handlers, x_i, x_bot_threshold):
@@ -21,7 +19,8 @@ def choose_pnml_h_type(pnml_handlers, x_i, x_bot_threshold):
         x_bot_square = 0.0
     else:
         x_bot_square = overparam_pnml_h.calc_x_bot_square(x_i)
-        pnml_h = overparam_pnml_h if x_bot_square / x_norm_square > x_bot_threshold else underparam_pnml_h
+        pnml_h = overparam_pnml_h if x_bot_square / \
+            x_norm_square > x_bot_threshold else underparam_pnml_h
     return pnml_h, x_bot_square, x_norm_square
 
 
@@ -47,7 +46,8 @@ class BasePNML:
         self.rank = npl.matrix_rank(self.x_arr_train.T @ self.x_arr_train)
         self.u, self.h, self.vt = npl.svd(self.x_arr_train.T)
         self.h_square = self.h ** 2
-        self.theta_erm = fit_least_squares_estimator(self.x_arr_train, self.y_vec_train, lamb=self.lamb)
+        self.theta_erm = fit_least_squares_estimator(
+            self.x_arr_train, self.y_vec_train, lamb=self.lamb)
         self.rank = np.sum(self.h_square > np.finfo('float').eps)
 
         # Indication of success or fail
@@ -59,7 +59,7 @@ class BasePNML:
         self.var = self.var_input
 
     @abstractmethod
-    def optimize_var(self, x_test: np.ndarray, y_gt: float) -> (float, float):
+    def optimize_var(self, x_test: np.ndarray, y_gt: float) -> Tuple[float, float]:
         pass
 
     @abstractmethod
@@ -67,7 +67,7 @@ class BasePNML:
         pass
 
     def add_test_to_train(self, x_arr_train: np.ndarray, x_test: np.ndarray,
-                          y_train_vec: np.ndarray, y_test: float) -> (np.ndarray, np.ndarray):
+                          y_train_vec: np.ndarray, y_test: float) -> Tuple[np.ndarray, np.ndarray]:
         """
         Add the test set feature to training set feature matrix
         :param x_arr_train: training set feature matrix.
@@ -116,6 +116,6 @@ class BasePNML:
         pass
 
     @abstractmethod
-    def verify_pnml_results(self) -> (bool, str):
+    def verify_pnml_results(self) -> Tuple[bool, str]:
         success, msg = True, ''
         return success, msg
