@@ -1,5 +1,8 @@
 data_dir: ../data/UCI_Datasets  # Directory that contains the data.
 
+#Learners
+is_execute_empirical_pnml: False
+
 # Preprocess param
 is_standardize_features: true   # standardize the data features.
 is_normalize_data: true         # Normalize the data such that each sample has norm=1.
@@ -9,11 +12,12 @@ max_val_samples: 200            # Constrain the val set size.
 max_train_samples: 10000        # Constrain the trainset set size.
 
 # Machine params
-is_local_mode: false            # Whether to use ray debug mode: using only 1 cpu.
-num_cpus: -1                    # Number of cpu to use. Set -1 to use all available CPUs.
+is_local_mode: true            # Whether to use ray debug mode: using only 1 cpu.
+num_cpus: -1                   # Number of cpu to use. Set -1 to use all available CPUs.
 
-dataset_name: bostonHousing    # Datasets to analyze
+dataset_name: concrete    # Datasets to analyze
 # Available datasets:
+#   bostonHousing
 #   concrete
 #   energy
 #   kin8nm
@@ -42,10 +46,10 @@ pnml_optim_param:
 
 # For debug
 fast_dev_run: false
-test_idxs: []             # Fill to debug specific test sample
-val_idxs: []              # Fill to debug specific val sample
-trainset_sizes: []        # Number of trainset sizes to eval. if empty use default
-splits: []                # Define specific train-test split. If none is given all splits are executed
+test_idxs: [ ]             # Fill to debug specific test sample
+val_idxs: [ ]              # Fill to debug specific val sample
+trainset_sizes: [ ]        # Number of trainset sizes to eval. if empty use default
+splits: [ ]                # Define specific train-test split. If none is given all splits are executed
 
 hydra:
   run:

@@ -44,7 +44,7 @@ class BasePNML:
 
         # ERM least squares parameters
         self.n, self.m = self.x_arr_train.shape
-        self.rank = min(self.m, self.n)
+        self.rank = npl.matrix_rank(self.x_arr_train.T @ self.x_arr_train)
         self.u, self.h, self.vt = npl.svd(self.x_arr_train.T)
         self.h_square = self.h ** 2
         self.theta_erm = fit_least_squares_estimator(self.x_arr_train, self.y_vec_train, lamb=self.lamb)

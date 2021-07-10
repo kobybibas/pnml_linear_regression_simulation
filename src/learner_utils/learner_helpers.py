@@ -42,11 +42,11 @@ def calc_square_error(x_data: np.ndarray, y_labels: np.ndarray, theta: np.ndarra
     return np.squeeze((y_hat - y_labels) ** 2)
 
 
-def calc_logloss(x_arr: np.ndarray, y_true: np.ndarray, theta: np.ndarray, var: float) -> np.ndarray:
+def calc_logloss(x_arr: np.ndarray, y_gt: np.ndarray, theta: np.ndarray, var: float) -> np.ndarray:
     y_hat = x_arr @ theta
     y_hat = y_hat.squeeze()
-    prob = np.exp(-(y_hat - y_true) ** 2 / (2 * var)) / np.sqrt(2 * np.pi * var)
-    logloss = -np.log(prob + np.finfo('float').eps)
+
+    logloss = 0.5 * np.log(2 * np.pi * var) + (y_gt - y_hat) ** 2 / (2 * var)
     return logloss.squeeze()
 
 

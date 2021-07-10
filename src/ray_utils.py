@@ -15,6 +15,6 @@ def ray_init(cpu_num: int, is_local_mode: bool):
     """
     cpu_count = psutil.cpu_count()
     cpu_to_use = cpu_num if cpu_num > 0 else cpu_count
-    cpu_to_use = cpu_to_use if is_local_mode is False else 1
+    cpu_to_use = cpu_to_use if is_local_mode is False else 0
     logger.info('cpu_count={}. Executing on {}. is_local_mode={}'.format(cpu_count, cpu_to_use, is_local_mode))
     ray.init(local_mode=is_local_mode, num_cpus=cpu_to_use)

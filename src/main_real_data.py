@@ -46,6 +46,7 @@ def submit_dataset_experiment_jobs(dataset_name: str, cfg) -> pd.DataFrame:
             ray_task = execute_trail.remote(x_train_reduced, y_train_reduced,
                                             valset_input[0], valset_input[1], testset_input[0], testset_input[1],
                                             split, trainset_size, dataset_name,
+                                            cfg.is_execute_empirical_pnml,
                                             pnml_optim_param=cfg.pnml_optim_param,
                                             debug_print=cfg.fast_dev_run or len(cfg.test_idxs) > 0,
                                             logger_file_path=logger_file_path)
@@ -88,7 +89,7 @@ def execute_real_datasets_experiment(cfg):
     out_path = os.getcwd()
 
     # Move from output directory to src
-    os.chdir('../../src')
+    os.chdir(osp.join(hydra.utils.get_original_cwd(),'src'))
     logger.info('[cwd out_dir]=[{} {}]'.format(os.getcwd(), out_path))
 
     # Initialize multiprocess. Every trainset size in a separate process

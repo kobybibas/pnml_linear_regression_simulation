@@ -2,7 +2,7 @@ import logging
 import os.path as osp
 import time
 from glob import glob
-
+import typing
 import numpy as np
 import numpy.linalg as npl
 import pandas as pd
@@ -35,9 +35,7 @@ def create_trainset_sizes_to_eval(trainset_sizes: list, n_train: int, n_features
     return trainset_sizes
 
 
-def standardize_features(x_train: np.ndarray, x_val: np.ndarray, x_test: np.ndarray) -> (np.ndarray,
-                                                                                         np.ndarray,
-                                                                                         np.ndarray):
+def standardize_features(x_train: np.ndarray, x_val: np.ndarray, x_test: np.ndarray) -> typing.Tuple[np.ndarray, np.ndarray,np.ndarray]:
     x_train_stand = x_train.copy()
     x_val_stand = x_val.copy()
     x_test_stand = x_test.copy()
@@ -68,7 +66,7 @@ def get_set_splits(dataset_name: str, data_dir: str) -> np.ndarray:
     return np.sort(splits)
 
 
-def choose_samples_for_debug(cfg, trainset: tuple, valset: tuple, testset: tuple) -> (tuple, tuple, tuple):
+def choose_samples_for_debug(cfg, trainset: tuple, valset: tuple, testset: tuple):
     x_train, y_train = trainset
     x_val, y_val = valset
     x_test, y_test = testset
@@ -168,6 +166,7 @@ def execute_trail(x_train: np.ndarray, y_train: np.ndarray,
                   x_val: np.ndarray, y_val: np.ndarray,
                   x_test: np.ndarray, y_test: np.ndarray,
                   split: int, trainset_size: int, dataset_name: str,
+                  is_execute_empirical_pnml: bool,
                   pnml_optim_param: dict, debug_print: bool = True, logger_file_path: str = None) -> pd.DataFrame:
     t0 = time.time()
     logger = logging.getLogger(__name__)
@@ -195,10 +194,11 @@ def execute_trail(x_train: np.ndarray, y_train: np.ndarray,
     debug_print and logger.info('calc_mn_learner_performance in {:.3f} sec'.format(time.time() - t1))
 
     # Empirical pNML learner
-    t1 = time.time()
-    pnml_df = calc_pnml_performance(x_train, y_train, x_val, y_val, x_test, y_test, split, pnml_optim_param, logger)
-    df_list.append(pnml_df)
-    debug_print and logger.info('calc_pnml_performance in {:.3f} sec'.format(time.time() - t1))
+    if is_execute_empirical_pnml is True:
+        t1 = time.time()
+        pnml_df = calc_pnml_performance(x_train, y_train, x_val, y_val, x_test, y_test, split, pnml_optim_param, logger)
+        df_list.append(pnml_df)
+        debug_print and logger.info('calc_pnml_performance in {:.3f} sec'.format(time.time() - t1))
 
     res_df = pd.concat(df_list, axis=1, sort=False)
     res_df['test_idx'] = res_df.index

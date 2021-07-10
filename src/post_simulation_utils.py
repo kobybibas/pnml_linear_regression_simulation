@@ -28,14 +28,15 @@ def load_simulation_results(base_dirs: list):
     return num_features_list, df
 
 
-def plot_confidence_interval(ax, x, mean, std, count, color: str):
+def plot_confidence_interval(ax, x, mean, std, count, color: str, alpha=0.3):
     mean, std, count = np.array(mean), np.array(std), np.array(count)
     lower = mean - 1.960 * std / np.sqrt(count)
     upper = mean + 1.960 * std / np.sqrt(count)
-    ax.fill_between(x, upper, lower, color=color, alpha=0.3)  # std curves
+    ax.fill_between(x, upper, lower, color=color, alpha=alpha)  # std curves
 
 
-def plot_logloss(ax, res_dict: dict, colors: list, alpha: float = 0.6):
+def plot_logloss(ax, res_dict: dict, colors: list, alpha: float = 0.6,
+                 label1="Minimum norm", label2="pNML", is_plot_first=True,alpha_conf=0.3):
     mean_df = res_dict["mean_df"]
     std_df = res_dict["std_df"]
     count_df = res_dict["count_df"]
@@ -43,16 +44,17 @@ def plot_logloss(ax, res_dict: dict, colors: list, alpha: float = 0.6):
     num_features = mean_df['num_features']
     m_over_n = num_features / trainset_size
 
-    key = "mn_test_logloss"
-    ax.plot(m_over_n, mean_df[key], label="Minimum norm", color=colors[0], alpha=alpha)
-    plot_confidence_interval(
-        ax, m_over_n, mean_df[key], std_df[key], count_df[key], colors[0]
-    )
+    if is_plot_first is True:
+        key = "mn_test_logloss"
+        ax.plot(m_over_n, mean_df[key], label=label1, color=colors[0], alpha=alpha)
+        plot_confidence_interval(
+            ax, m_over_n, mean_df[key], std_df[key], count_df[key], colors[0],alpha=alpha_conf
+        )
 
     key = "pnml_test_logloss"
-    ax.plot(m_over_n, mean_df[key], label="pNML", color=colors[1], alpha=alpha)
+    ax.plot(m_over_n, mean_df[key], label=label2, color=colors[1], alpha=alpha)
     plot_confidence_interval(
-        ax, m_over_n, mean_df[key], std_df[key], count_df[key], colors[1]
+        ax, m_over_n, mean_df[key], std_df[key], count_df[key], colors[1],alpha=alpha_conf
     )
     return ax
 
